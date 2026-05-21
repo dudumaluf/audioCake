@@ -177,6 +177,22 @@ Format: `ADR-NNN — Title (YYYY-MM-DD) — author`
 
 ---
 
+## ADR-016 — shadcn `base-nova` preset implies Base UI + react-resizable-panels v4 (2026-05-21)
+
+**Context**: Phase 1 build surfaced several small API mismatches between the shadcn-installed components and the in-tree wrappers.
+
+**Decision**: Adopt the actual library APIs as-shipped (Base UI for tooltips, react-resizable-panels v4) rather than monkey-patching the shadcn wrappers.
+
+**Concrete consequences**:
+
+- `<TooltipProvider delay={...}>` (not `delayDuration`).
+- `<TooltipTrigger render={<Child/>} />` (not `asChild`).
+- `<ResizablePanelGroup orientation="horizontal" id="...">` (not `direction` / `autoSaveId`).
+
+These differ from older shadcn/Radix docs floating around online.
+
+---
+
 ## ADR-015 — Next.js 16 instead of 15 (2026-05-21)
 
 **Context**: Plan specified Next 15.5, but `create-next-app@latest` now installs Next 16.2.6.

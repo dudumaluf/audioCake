@@ -2,7 +2,7 @@
 
 Status legend: `planned` · `in-progress` · `done` · `deferred`
 
-## Phase 0 — Repo + deployment + documentation scaffolding · `in-progress`
+## Phase 0 — Repo + deployment + documentation scaffolding · `done`
 
 - Clone `dudumaluf/audioCake`.
 - Scaffold Next.js 16 (App Router, TS strict, Tailwind v4, Turbopack) with pnpm.
@@ -15,7 +15,7 @@ Status legend: `planned` · `in-progress` · `done` · `deferred`
 
 **Verify**: `pnpm dev` runs locally; pushing `main` deploys to Vercel; Karpathy rule visible in Cursor; all docs files exist with seed content; `README.md` links resolve.
 
-## Phase 1 — Foundation + audio capture · `planned`
+## Phase 1 — Foundation + audio capture · `done`
 
 App shell, dark theme tokens, fonts, audio input device picker, recording + metering AudioWorklets, mono-to-stereo upmix, OPFS storage of recorded WAVs, clip library sidebar, software-monitoring toggle, 1-bar count-in, device disconnect handling, crash recovery.
 

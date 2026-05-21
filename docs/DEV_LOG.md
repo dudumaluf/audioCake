@@ -27,5 +27,77 @@ Append-only journal. One entry per work session.
 
 ### Next
 
-- Phase 0 final steps: write root README (in progress), git commit + push, instruct user on Vercel connect.
-- Then immediately into Phase 1: dark theme tokens + app shell layout.
+- Vercel connect (manual, by user): visit <https://vercel.com/new>, import `dudumaluf/audioCake`, accept defaults (Next.js auto-detected), deploy. After that every push to `main` will deploy automatically.
+- Then Phase 1: dark theme tokens + app shell layout + audio input picker + recording worklets.
+
+### Phase 0 verification — all green
+
+- [x] `pnpm dev` shows hello page locally on `localhost:3000` (HTTP 200 verified).
+- [x] Karpathy rule present at `.cursor/rules/karpathy-guidelines.mdc`.
+- [x] All eight docs files exist and contain seed content.
+- [x] `README.md` links resolve.
+- [x] Initial commit pushed to `main` on `dudumaluf/audioCake`.
+- [ ] Vercel auto-deploy on push (waiting on user to connect the repo at <https://vercel.com/new>).
+
+---
+
+## 2026-05-21 — Phase 1 complete
+
+### Done
+
+- Theme tokens: AudioCake brand colors live in `globals.css` (warm amber accent, teal monitor, red record, near-black panel) in OKLCH, dark-only.
+- Fonts: Inter + JetBrains Mono via `next/font`, with a `.font-mono-num` utility that uses tabular numerics for timecode/levels.
+- Layout: forced-dark `<html class="dark">` in `layout.tsx`, viewport theme-color set, AudioCake metadata.
+- App shell (`AppShell.tsx`): topbar across the top, then three resizable columns (library / center / inspector). Center column has a nested vertical resizable group (timeline above, mixer below). Uses shadcn's resizable wrapper (Base UI internals + `react-resizable-panels` v4 — note the wrapper exports `orientation`/`id` not `direction`/`autoSaveId`).
+- Types (`lib/types.ts`): `AudioAsset` only — clip/track types defer to Phase 2 per Karpathy #2.
+- State stores:
+  - `io-store.ts`: selected input device, software-monitoring + count-in flags, persisted to localStorage.
+  - `asset-store.ts`: list of audio assets, with `addRecording` / `rename` / `remove` actions that keep OPFS + IndexedDB in sync.
+- Storage:
+  - `storage/opfs.ts`: write/read/delete audio blobs in OPFS, `requestPersistentStorage`, `getStorageEstimate` ready for Phase 4 soft-caps.
+  - `storage/idb.ts`: Dexie wrapper with `audioAssets` table (schema v1, `id, createdAt, name` indexes), with safe Float32Array<->Array conversion for peaks.
+- Audio engine:
+  - `audio/engine.ts`: singleton AudioContext (lazy, `latencyHint: 'interactive'`), idempotent worklet loader, capability detection.
+  - `audio/wav-encoder.ts`: 16/24/32-bit PCM WAV encoder (~80 LoC as planned).
+  - `audio/preview.ts`: tiny single-asset preview player with a tiny pub/sub so the library can highlight what's playing.
+  - `audio/recorder.ts`: `openInputStream` (mono, all DSP off), `startLiveMonitor`, `startRecording` with stop handshake + 1 s safety timeout, `upmixToStereo`.
+- AudioWorklets at `public/worklets/`:
+  - `recording-processor.js`: 1-second ring chunks, transferable Float32Arrays, drain-on-stop with `done` ACK.
+  - `meter-processor.js`: peak + RMS + dB-decaying peak-hold at 60 Hz.
+- Hooks:
+  - `useAudioInputs`: enumerates `MediaDevices`, subscribes to `devicechange`, has explicit permission flow for empty-label initial state. (Used `queueMicrotask` to satisfy React 19's `react-hooks/set-state-in-effect` rule.)
+  - `useRecorder`: state machine `idle → monitoring → count-in → recording → saving → monitoring`, manages stream/monitor/recording lifecycles, writes asset + WAV via `addRecording`.
+- UI:
+  - `io/LevelMeter.tsx`: segmented LED-style meter, dB-fraction mapping, color tiers (teal → amber → red), peak-cap line.
+  - `io/DevicePicker.tsx`: device select with permission CTA.
+  - `topbar/Topbar.tsx`: project label, picker, Start/Stop monitor button, live meter, count-in toggle, record/stop button (red while recording, spinner while saving).
+  - `library/Library.tsx` + `library/LibraryItem.tsx` + `library/MiniWaveform.tsx`: library with empty state, item rows with play/pause, inline rename, delete-with-confirm dialog, source-device tag, canvas mini-waveform painted from the asset's RMS peaks.
+  - `timeline/Timeline.tsx`, `inspector/Inspector.tsx`, `mixer/Mixer.tsx`: placeholder content for Phase 2/3.
+
+### Notes & surprises
+
+- **Next 16 + React 19 Compiler are strict**. The compiler enforces `react-hooks/set-state-in-effect`; the canonical pattern of calling an async loader in `useEffect` triggers it even when the actual setState is async. Used `queueMicrotask` as a clean side-step. Worth remembering for later hooks.
+- **shadcn templates lag a version**. The `react-resizable-panels` v4 API uses `orientation`/`id` (not `direction`/`autoSaveId`); the shadcn-provided `Tooltip` is on **Base UI** (not Radix), which means `render={<Child/>}` instead of `asChild`. Recorded in ADR-016.
+- **TooltipProvider's prop is `delay`** (not `delayDuration`) — small thing, easy to miss.
+- **Empty `QUANTUM` constant in the recording worklet** was removed (Karpathy #2: nothing speculative).
+
+### Verification
+
+Manual checks performed:
+
+- [x] `pnpm build` green (Next 16 prod build, TS strict check pass).
+- [x] `pnpm lint` clean (ESLint flat + Next + React Compiler rules).
+- [x] `pnpm format` idempotent.
+- [x] `pnpm dev` serves HTTP 200 at <http://localhost:3000> with title `AudioCake`, dark theme active, AppShell rendered server-side.
+- [ ] Live device test (requires user to plug a Roland and click around). Plan checklist:
+  - Plug Roland S-1 via USB-C; appears in device picker.
+  - Click "Enable audio input" if prompted, then pick S-1.
+  - "Start monitor" lights the meter when audio flows.
+  - Hit Record (with count-in waiting 2 s) → play a pattern → Stop → recording appears in the library named e.g. "Roland 18:23".
+  - Click play button on the library row to preview, click pause to stop.
+  - Rename inline; delete with confirm.
+  - Reload page; library row persists; preview still works.
+
+### Next
+
+- Phase 2: real multi-track timeline + Tone.js engine + arrangement.
