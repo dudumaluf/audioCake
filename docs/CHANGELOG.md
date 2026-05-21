@@ -4,6 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-21 — Phase 3: editing + undo + shortcuts
+
+### Added
+
+- Trim handles on left/right edges of selected clips (non-destructive: adjusts `offset` + `duration` against the source asset, clamped to source bounds).
+- Fade in / fade out handles on selected clips (top-corner triangles), with visual gradient overlays on the clip body.
+- Inspector panel with single-clip editor (name, position, offset, duration, fade in/out, gain) and multi-clip bulk editor (gain offset, set fades for all).
+- Split selected clips at playhead (`S`).
+- Duplicate selected clips at offset (`⌘D`).
+- Delete selected clips (`Backspace`).
+- Nudge selected clips by snap step (arrow keys; `Shift` for ×10).
+- Click ruler to seek playhead; drag ruler to set loop region (auto-enables loop).
+- Zundo undo/redo wrapped around `projectStore` (structural fields only; selection/zoom excluded). `⌘Z` / `⌘⇧Z`.
+- `useKeyboardShortcuts` + `KEYMAP` single source of truth, with proper text-input skip and exact modifier matching.
+- BPM input in the topbar wired (Phase 2 prop; surfaced via keymap now).
+
 ## [0.2.0] — 2026-05-21 — Phase 2: timeline + arrangement
 
 ### Added

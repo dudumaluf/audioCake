@@ -156,3 +156,45 @@ Manual checks performed:
 ### Next
 
 - Phase 3: editing (trim + fade handles, split, duplicate, delete, undo/redo, BPM control wired to keymap, full keyboard shortcuts).
+
+---
+
+## 2026-05-21 — Phase 3 complete
+
+### Done
+
+- `lib/utils/keymap.ts`: single typed source-of-truth for shortcuts (id, code, mod, shift, label, description). `matchShortcut` enforces exact modifier matches and disallows unassigned Alt usage.
+- `hooks/useKeyboardShortcuts.ts`: subscribes one global `keydown` listener, skips when focus is in an input/textarea/select/contenteditable, dispatches to the first matching binding.
+- `hooks/useUndoRedo.ts`: thin wrapper around `useProjectStore.temporal`.
+- `lib/state/project-store.ts` wrapped with Zundo `temporal`:
+  - `partialize` restricts undo history to structural fields (`bpm`, `tracks`, `clips`, `loopRegion`, `loopEnabled`) — transient UI state stays out of history so undo doesn't restore selection/zoom.
+  - Added editing actions: `splitSelectedAt(time)` (splits each selected clip that contains the time, preserving fades on both halves), `duplicateSelected` (appends each clip duplicate after its current position), `deleteSelected`, `nudgeSelected(delta)`, `toggleClipSelected`.
+- `ClipBlock.tsx` rewritten with five interaction zones: body (move), left edge (trim from start — moves both start + offset + duration with clamp), right edge (trim end — clamps to remaining source duration), top corners (fade in / fade out, only visible when selected). All edits go through a single `preview` overlay and are committed on pointerup so undo records one entry per gesture. Fade visuals are gradient masks on the clip body.
+- `Inspector.tsx`: single-clip editor (name + numeric fields + sliders) and multi-clip bulk editor (gain offset, set fades for all). Uses scalar slider API throughout.
+- `Ruler.tsx` extended: click to seek, drag horizontally to set loop region (with snap), and auto-enables loop on drag-set.
+- `AppShell.tsx` mounts `useKeyboardShortcuts` with the complete handler map: transport (play/pause/playFromStart/stop/loopToggle), edit (split, duplicate, delete, nudge ±1/±10), undo/redo, view (zoom in/out). Handlers read store state via `getState()` so the memoization stays stable.
+
+### Notes & surprises
+
+- **Zundo `partialize`** is critical: without it, every selection click would push a history entry and undo would have to walk past dozens of selection snapshots to actually undo a clip move.
+- **One commit per gesture**: the clip-edit interactions write to a local `preview` overlay during the drag and only call `updateClip` once on pointerup. This keeps the undo history readable and avoids burning history slots on every pixel of motion.
+- **Trim-left** is the trickiest interaction: it has to adjust `startTime`, `offset`, *and* `duration` together (start moves right, offset moves right by the same amount, duration shrinks). Adding `bypassSnap` (Cmd) lets the user nudge by sub-grid amounts.
+- **Multi-clip "bulk fades" widget**: choosing to make the slider a delta on gain but an absolute set on fades was a UX call — fades are usually small absolute values you want consistent across selected clips, gains are usually nudges.
+- **Inputs as focus traps**: the keymap skips events when focus is inside an INPUT/TEXTAREA/SELECT/contenteditable, so typing in track names / inspector fields doesn't fire shortcuts.
+
+### Verification
+
+- [x] `pnpm build` green.
+- [x] `pnpm lint` clean.
+- [x] `pnpm format` idempotent.
+
+Live test checklist (after live recording works):
+- Trim clip from both edges; original asset still intact (re-drag to restore).
+- Set 1 s fade-in and 2 s fade-out via inspector and via corner handles; both reflect in real time.
+- Split at playhead with `S`; nudge halves apart with arrows; reuse `S` again.
+- `⌘D` duplicates; `Backspace` deletes; `⌘Z` undoes everything in order.
+- Drag the ruler to set a loop region; toggle off / on with `L`.
+
+### Next
+
+- Phase 4: persistence (autosave, project switcher, `.acproj` import/export) + multi-format mix export (MP3/AAC/WAV/Opus).

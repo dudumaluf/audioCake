@@ -27,7 +27,7 @@ Multi-track timeline with bars/beats ruler and snap-to-grid, drag-asset-to-track
 
 **Verify**: drag 3 clips onto 3 tracks → play → hear layered → mute/solo/pan/gain real-time → loop region works.
 
-## Phase 3 — Editing · `planned`
+## Phase 3 — Editing · `done`
 
 Selection (click/shift/marquee), inspector panel, trim handles, fade handles, split at playhead, duplicate/delete/nudge, loop region, BPM input, snap toggle, undo/redo, full keymap.
 

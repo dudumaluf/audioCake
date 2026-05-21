@@ -1,7 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
-import { secPerBar } from '@/lib/utils/time'
+import { useMemo, useRef } from 'react'
+import { useProjectStore } from '@/lib/state/project-store'
+import { useTransportStore } from '@/lib/state/transport-store'
+import { snapTime, secPerBar } from '@/lib/utils/time'
 
 interface RulerProps {
   pxPerSec: number
@@ -12,9 +14,8 @@ interface RulerProps {
 /**
  * Bar/beat ruler across the top of the timeline.
  *
- * Renders a heavy mark + bar number at each bar, a light mark at each beat.
- * Drawn as DOM (not canvas) so it scales with browser zoom and is easy to
- * extend (clickable seek in Phase 3).
+ * Renders bar marks + numbers + sub-beat ticks. Click anywhere to seek the
+ * playhead; drag horizontally to set the loop region (also enables loop).
  */
 export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
   const ticks = useMemo(() => {
@@ -24,18 +25,61 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
   }, [bpm, durationSec])
 
   const barLen = secPerBar(bpm)
+  const setPlayhead = useTransportStore((s) => s.setPlayhead)
+  const setLoopRegion = useProjectStore((s) => s.setLoopRegion)
+  const setLoopEnabled = useProjectStore((s) => s.setLoopEnabled)
+  const loopRegion = useProjectStore((s) => s.loopRegion)
+  const loopEnabled = useProjectStore((s) => s.loopEnabled)
+  const snap = useProjectStore((s) => s.snap)
+
+  const dragStartRef = useRef<{ pointerX: number; rectLeft: number; time: number } | null>(null)
+  const dragMovedRef = useRef(false)
+
+  const timeFromEvent = (e: React.PointerEvent | PointerEvent, rectLeft: number): number => {
+    const raw = Math.max(0, (e.clientX - rectLeft) / pxPerSec)
+    return e.metaKey || e.ctrlKey ? raw : snapTime(raw, snap, bpm)
+  }
 
   return (
-    <div className="bg-panel/60 border-border/60 relative h-7 border-b">
+    <div
+      className="bg-panel/60 border-border/60 relative h-7 cursor-text border-b select-none"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+        const t = timeFromEvent(e, rect.left)
+        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+        dragStartRef.current = { pointerX: e.clientX, rectLeft: rect.left, time: t }
+        dragMovedRef.current = false
+        setPlayhead(t)
+      }}
+      onPointerMove={(e) => {
+        const drag = dragStartRef.current
+        if (!drag) return
+        if (Math.abs(e.clientX - drag.pointerX) > 3) {
+          dragMovedRef.current = true
+          const now = timeFromEvent(e, drag.rectLeft)
+          const start = Math.min(drag.time, now)
+          const end = Math.max(drag.time, now)
+          setLoopRegion(end > start ? { start, end } : null)
+        }
+      }}
+      onPointerUp={(e) => {
+        if (!dragStartRef.current) return
+        ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+        if (dragMovedRef.current) {
+          setLoopEnabled(true)
+        }
+        dragStartRef.current = null
+      }}
+    >
       {ticks.map((bar) => {
         const left = bar * barLen * pxPerSec
         return (
-          <div key={bar} className="absolute top-0 bottom-0" style={{ left }}>
+          <div key={bar} className="pointer-events-none absolute top-0 bottom-0" style={{ left }}>
             <div className="bg-foreground/40 absolute top-0 bottom-1 left-0 w-px" />
             <span className="text-muted-foreground font-mono-num absolute top-0.5 left-1 text-[10px]">
               {bar + 1}
             </span>
-            {/* Beat marks 2, 3, 4 inside the bar. */}
             {[1, 2, 3].map((beat) => (
               <div
                 key={beat}
@@ -46,6 +90,15 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
           </div>
         )
       })}
+      {loopRegion && loopEnabled && (
+        <div
+          className="bg-primary/30 border-primary pointer-events-none absolute top-0 bottom-0 border-x"
+          style={{
+            left: loopRegion.start * pxPerSec,
+            width: (loopRegion.end - loopRegion.start) * pxPerSec,
+          }}
+        />
+      )}
     </div>
   )
 }
