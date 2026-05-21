@@ -135,6 +135,35 @@ function SingleClipInspector({ clip }: { clip: Clip }) {
         step={0.1}
         onChange={(v) => updateClip(clip.id, { gainDb: v })}
       />
+
+      <SliderField
+        label="Time stretch"
+        valueLabel={`${(clip.timeStretch ?? 1).toFixed(2)}x`}
+        value={clip.timeStretch ?? 1}
+        min={0.5}
+        max={2}
+        step={0.01}
+        onChange={(v) => updateClip(clip.id, { timeStretch: v })}
+      />
+
+      <SliderField
+        label="Pitch"
+        valueLabel={`${(clip.pitchSemitones ?? 0) >= 0 ? '+' : ''}${(clip.pitchSemitones ?? 0).toFixed(0)} st`}
+        value={clip.pitchSemitones ?? 0}
+        min={-12}
+        max={12}
+        step={1}
+        onChange={(v) => updateClip(clip.id, { pitchSemitones: Math.round(v) })}
+      />
+
+      <label className="flex items-center justify-between text-xs">
+        <span className="text-muted-foreground text-[10px] tracking-wider uppercase">Reverse</span>
+        <input
+          type="checkbox"
+          checked={!!clip.reverse}
+          onChange={(e) => updateClip(clip.id, { reverse: e.target.checked })}
+        />
+      </label>
     </div>
   )
 }

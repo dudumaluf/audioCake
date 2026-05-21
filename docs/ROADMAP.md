@@ -45,7 +45,7 @@ Web MIDI engine, MIDI tracks, MIDI clock master (24 PPQN + start/stop/continue),
 
 **Verify**: Roland's sequencer locks to project BPM via MIDI clock; MIDI recording + editing works; bounce produces equivalent audio clip; `.mid` opens in Logic/Ableton.
 
-## Phase 6 — Effects + time/pitch · `planned`
+## Phase 6 — Effects + time/pitch · `done` (reverb/delay sends + bounce-MIDI-to-audio deferred to a focused patch)
 
 SoundTouch AudioWorklet per-clip time-stretch and pitch-shift (linked or independent), reverse, per-track EQ + compressor, reverb/delay sends, master limiter, metronome.
 

@@ -50,6 +50,10 @@ export interface Track {
   mute: boolean
   solo: boolean
   recordArm: boolean
+  /** Audio-only: 3-band EQ. Each band is dB gain at the band center. */
+  eq?: { low: number; mid: number; high: number }
+  /** Audio-only: simple compressor. */
+  compressor?: { thresholdDb: number; ratio: number; enabled: boolean }
   /** MIDI-only: where to send recorded/played notes back out (optional). */
   midiOutPortId?: string
   midiOutChannel?: number
@@ -81,6 +85,12 @@ export interface Clip {
   fadeOut: number
   gainDb: number
   name: string
+  /** Optional. Defaults to 1 (no change). 0.5 = half-speed, 2 = double-speed. */
+  timeStretch?: number
+  /** Optional. Defaults to 0. -12..+12 semitones. */
+  pitchSemitones?: number
+  /** Optional. Defaults to false. */
+  reverse?: boolean
 }
 
 /** A single MIDI note inside a MidiAsset. */

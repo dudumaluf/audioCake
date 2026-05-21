@@ -16,10 +16,13 @@ interface IOState {
   softwareMonitoring: boolean
   /** When true, play a 1-bar metronome count-in before recording starts. */
   countIn: boolean
+  /** When true, the metronome ticks during playback (not just count-in). */
+  metronomeOnPlay: boolean
 
   setSelectedInput: (id: string | null, label: string | null) => void
   setSoftwareMonitoring: (on: boolean) => void
   setCountIn: (on: boolean) => void
+  setMetronomeOnPlay: (on: boolean) => void
 }
 
 export const useIOStore = create<IOState>()(
@@ -29,9 +32,11 @@ export const useIOStore = create<IOState>()(
       selectedInputLabel: null,
       softwareMonitoring: false,
       countIn: true,
+      metronomeOnPlay: false,
       setSelectedInput: (id, label) => set({ selectedInputId: id, selectedInputLabel: label }),
       setSoftwareMonitoring: (on) => set({ softwareMonitoring: on }),
       setCountIn: (on) => set({ countIn: on }),
+      setMetronomeOnPlay: (on) => set({ metronomeOnPlay: on }),
     }),
     { name: 'audiocake:io' },
   ),

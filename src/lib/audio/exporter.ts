@@ -1,5 +1,6 @@
 import { encodeMp3 } from './encoders/mp3'
 import { encodeWebCodecs } from './encoders/webcodecs'
+import { createSoundTouchNode, registerSoundTouch } from './soundtouch'
 import { encodeWav, type WavBitDepth } from './wav-encoder'
 import { readAudioBlob } from '@/lib/storage/opfs'
 import type { Clip, Track } from '@/lib/types'
@@ -38,9 +39,18 @@ export async function renderAndExport(
   const { normalize, onProgress } = options
   const sampleRate = options.sampleRate ?? 48_000
 
+  // Audio clips only for offline render (MIDI clips don't produce audio
+  // unless bounced to audio first — see bounceMidiClip).
+  const audioClips = clips.filter((c) => c.kind === 'audio')
+
   // Compute the project length: end of the last clip, with a tiny tail to
-  // avoid clipping a fade-out.
-  const lengthSec = clips.reduce((m, c) => Math.max(m, c.startTime + c.duration), 0) + 0.25
+  // avoid clipping a fade-out. Account for clip timeStretch (>1 makes
+  // it shorter, <1 makes it longer).
+  const lengthSec =
+    audioClips.reduce((m, c) => {
+      const stretchedDur = c.duration / (c.timeStretch || 1)
+      return Math.max(m, c.startTime + stretchedDur)
+    }, 0) + 0.25
   if (lengthSec <= 0.25) {
     throw new Error('No clips to export')
   }
@@ -51,6 +61,10 @@ export async function renderAndExport(
     length: lengthFrames,
     sampleRate,
   })
+
+  // Register SoundTouch in the offline context (no-op if any clip has
+  // neutral stretch / pitch; cheap if some do).
+  await registerSoundTouch(ctx)
 
   // Solo logic mirrors the live engine.
   const anySoloed = tracks.some((t) => t.solo)
@@ -67,35 +81,59 @@ export async function renderAndExport(
     trackNodes.set(t.id, gain)
   }
 
-  // Decode each clip's asset (cache per asset id) and schedule it.
+  // Decode each clip's asset (cache per asset id + reverse flag) and schedule it.
   const assetCache = new Map<string, AudioBuffer>()
-  for (const c of clips) {
+  for (const c of audioClips) {
     const trackNode = trackNodes.get(c.trackId)
     if (!trackNode) continue
-    let buffer = assetCache.get(c.assetId)
+    const reverse = !!c.reverse
+    const cacheKey = reverse ? `${c.assetId}:rev` : c.assetId
+    let buffer = assetCache.get(cacheKey)
     if (!buffer) {
-      const blob = await readAudioBlob(c.assetId)
-      if (!blob) continue
-      const arr = await blob.arrayBuffer()
-      buffer = await ctx.decodeAudioData(arr)
-      assetCache.set(c.assetId, buffer)
+      let base = assetCache.get(c.assetId)
+      if (!base) {
+        const blob = await readAudioBlob(c.assetId)
+        if (!blob) continue
+        const arr = await blob.arrayBuffer()
+        base = await ctx.decodeAudioData(arr)
+        assetCache.set(c.assetId, base)
+      }
+      buffer = reverse ? reverseBuffer(ctx, base) : base
+      assetCache.set(cacheKey, buffer)
     }
+    const ts = c.timeStretch ?? 1
+    const ps = c.pitchSemitones ?? 0
+    const stretchedDur = c.duration / ts
+
     const source = ctx.createBufferSource()
     source.buffer = buffer
+    source.playbackRate.value = ts
+
     const clipGain = ctx.createGain()
     clipGain.gain.value = dbToLinear(c.gainDb)
-    // Fade in
     if (c.fadeIn > 0) {
+      const fadeIn = Math.min(c.fadeIn, stretchedDur)
       clipGain.gain.setValueAtTime(0, c.startTime)
-      clipGain.gain.linearRampToValueAtTime(dbToLinear(c.gainDb), c.startTime + c.fadeIn)
+      clipGain.gain.linearRampToValueAtTime(dbToLinear(c.gainDb), c.startTime + fadeIn)
     }
-    // Fade out
     if (c.fadeOut > 0) {
-      const fadeStart = c.startTime + c.duration - c.fadeOut
+      const fadeOut = Math.min(c.fadeOut, stretchedDur)
+      const fadeStart = c.startTime + stretchedDur - fadeOut
       clipGain.gain.setValueAtTime(dbToLinear(c.gainDb), Math.max(0, fadeStart))
-      clipGain.gain.linearRampToValueAtTime(0, c.startTime + c.duration)
+      clipGain.gain.linearRampToValueAtTime(0, c.startTime + stretchedDur)
     }
-    source.connect(clipGain).connect(trackNode)
+
+    if (ts !== 1 || ps !== 0) {
+      const stNode = createSoundTouchNode(ctx, {
+        timeStretch: ts,
+        pitchSemitones: ps,
+      })
+      source.connect(stNode as unknown as AudioNode)
+      ;(stNode as unknown as AudioNode).connect(clipGain)
+    } else {
+      source.connect(clipGain)
+    }
+    clipGain.connect(trackNode)
     source.start(c.startTime, c.offset, c.duration)
   }
 
@@ -165,6 +203,16 @@ async function encode(
 function dbToLinear(db: number): number {
   if (db <= -60) return 0
   return Math.pow(10, db / 20)
+}
+
+function reverseBuffer(ctx: BaseAudioContext, src: AudioBuffer): AudioBuffer {
+  const out = ctx.createBuffer(src.numberOfChannels, src.length, src.sampleRate)
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const inData = src.getChannelData(ch)
+    const outData = out.getChannelData(ch)
+    for (let i = 0, n = inData.length; i < n; i++) outData[n - 1 - i] = inData[i]!
+  }
+  return out
 }
 
 function normalizeToPeakDb(channels: Float32Array[], targetDb: number): Float32Array[] {

@@ -290,6 +290,7 @@ Live test plan:
 - [x] `pnpm format` idempotent.
 
 Live test plan:
+
 - Add a MIDI track via the timeline toolbar.
 - Pick the Roland device under IN; the same (or another) device under OUT; channel 1.
 - Hit record-arm on the track; press Play.
@@ -300,3 +301,54 @@ Live test plan:
 ### Next
 
 - Phase 6: SoundTouch per-clip time-stretch + pitch-shift, per-track effects (EQ, compressor, sends), master limiter, metronome — plus the deferred bounce-MIDI-to-audio.
+
+---
+
+## 2026-05-21 — Phase 6 complete (sends + bounce deferred)
+
+### Done
+
+- Types: optional `timeStretch`, `pitchSemitones`, `reverse` on `Clip`. Optional `eq` and `compressor` on `Track`.
+- `lib/audio/soundtouch.ts`: dynamic-import wrapper around `@soundtouchjs/audio-worklet` (the package defines `AudioWorkletNode` at module load which throws under SSR — keep all SoundTouch globals off the static import graph). Functions: `registerSoundTouch(ctx)` (idempotent per-context), `createSoundTouchNode(ctx, params)`, `applyStretchParams(node, params)`.
+- Copied `node_modules/.../soundtouch-processor.js` into `public/worklets/` so it's served from a stable URL.
+- ESLint config now ignores `public/worklets/soundtouch-processor.js` (third-party bundle with internal underscore-prefixed variables).
+- `lib/audio/playback.ts`:
+  - Per-track signal flow now: `clip-source → [SoundTouchNode bridge if stretch/pitch != neutral] → Tone.Gain bridge → EQ3 → Compressor → Channel (gain/pan/mute) → master limiter → Destination`.
+  - `rewireClipRouting()` extracted: handles the EQ insert as target, creates/destroys SoundTouch insert, uses a Tone.Gain to bridge native AudioNode output into the Tone graph cleanly (avoids `target.input` type gymnastics).
+  - `ensureClipBuffer(clipId, assetId, reverse)` now branches on reverse: shared `decodeCache` keyed by `${assetId}` or `${assetId}:rev` so a clip toggling reverse on/off doesn't thrash decoded data.
+  - `buildReversedBuffer` produces the reversed flavour.
+  - `applyTracks` now constructs `Tone.EQ3` + `Tone.Compressor` per track; updates them from `track.eq` / `track.compressor` when present.
+  - Master `Tone.Limiter(-0.3)` always-on between tracks and Destination (`ensureInit`). Metronome `Tone.MembraneSynth` lives outside the limiter (routes direct to Destination) and only renders live — never present in offline export.
+  - `setBpm`, `setMetronomeEnabled`, `setLoop` exported; `usePlaybackEngine` mirrors these from stores.
+- `lib/audio/exporter.ts` mirrors all of the above offline: registers SoundTouch in the OfflineAudioContext, inserts per-clip SoundTouchNode when needed, handles reverse via the same `:rev` cache key, accounts for `timeStretch` when computing total length and clip fade timing (stretched duration = `duration / ts`).
+- Inspector adds time-stretch slider, pitch (semitones, integer step), reverse checkbox.
+- Mixer channel strip adds a compact 3-band EQ for audio tracks (HI / MID / LO ±12 dB). MIDI strip is slimmer (no audio mix controls).
+- ioStore adds `metronomeOnPlay`; topbar adds the "Click" toggle. `usePlaybackEngine` syncs the flag into the engine.
+- Plan called for reverb/delay sends; deferred to keep the change surgical.
+- Plan called for bounce-MIDI-to-audio; deferred as a focused follow-up patch — the architecture supports it (existing recorder + MIDI scheduler) but the UX flow is non-trivial.
+
+### Notes & surprises
+
+- **SSR + AudioWorkletNode**: `@soundtouchjs/audio-worklet`'s root entry imports `AudioWorkletNode` at module load. Even though our app code is `'use client'`, Next 16's prerender still evaluates the module graph server-side. Solution: dynamic import inside the wrapper. Will document any other libs that hit the same issue in ADRs.
+- **Tone connect type gymnastics**: connecting a native `AudioWorkletNode` output into a `Tone` chain requires either casting (`target.input as unknown as AudioNode`) or a Tone bridge. The bridge (a Tone.Gain pass-through) is cleaner and lets the Tone side stay type-safe.
+- **Reverse**: chose to store a reversed AudioBuffer rather than reverse on the fly. Tone.Player's `reverse` flag exists but interacts weirdly with sliced playback (offset+duration) when combined with playbackRate changes. A reversed buffer copy is simple, fast (one pass over the data), and cached per asset.
+- **Master limiter** placement: between tracks and Destination, before the meter so the meter shows pre-limit levels and gives a useful early-warning of clipping. Always-on (no bypass toggle in v1) — if a user really wants to clip they can boost a clip gain to compensate.
+- **Metronome bypasses the limiter**: routed direct to Destination so it can't be inadvertently squashed. Since it only schedules on the live transport, it's automatically excluded from OfflineAudioContext renders → exports.
+
+### Verification
+
+- [x] `pnpm build` green.
+- [x] `pnpm lint` clean.
+- [x] `pnpm format` idempotent.
+
+Live test plan:
+- Take an existing clip → bump time stretch to 1.5x → hear it slow down without pitch drop.
+- Pitch +5 semitones → hear it up a fourth without length change.
+- Reverse toggle → hear it backwards.
+- Bump an EQ band in the mixer → hear the colouration.
+- Export a project that has stretch / pitch / reverse on a clip → exported WAV matches what you heard live.
+- Toggle Click → metronome ticks during play; export the project → no metronome in the file.
+
+### Next
+
+- Phase 7: crossfades, tap tempo, color picker, project notes pad, Quick-Capture, PWA install, File System Access, drag-drop external audio import, touch-target audit. Plus the deferred bounce-MIDI-to-audio + reverb/delay sends if time permits.

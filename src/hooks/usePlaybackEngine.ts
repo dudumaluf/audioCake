@@ -8,9 +8,11 @@ import {
   pauseTransport,
   setBpm,
   setLoop,
+  setMetronomeEnabled,
   startTransport,
   stopTransport,
 } from '@/lib/audio/playback'
+import { useIOStore } from '@/lib/state/io-store'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
 
@@ -52,6 +54,11 @@ export function usePlaybackEngine() {
   useEffect(() => {
     setLoop(loopEnabled, loopRegion?.start ?? 0, loopRegion?.end ?? 0)
   }, [loopEnabled, loopRegion])
+
+  const metronomeOnPlay = useIOStore((s) => s.metronomeOnPlay)
+  useEffect(() => {
+    setMetronomeEnabled(metronomeOnPlay)
+  }, [metronomeOnPlay])
 
   // rAF playhead loop, only while playing.
   useEffect(() => {

@@ -31,7 +31,7 @@ interface TopbarProps {
  */
 export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
   const recorder = useRecorder()
-  const { countIn, setCountIn } = useIOStore()
+  const { countIn, setCountIn, metronomeOnPlay, setMetronomeOnPlay } = useIOStore()
   const bpm = useProjectStore((s) => s.bpm)
   const setBpm = useProjectStore((s) => s.setBpm)
   const loopEnabled = useProjectStore((s) => s.loopEnabled)
@@ -167,6 +167,22 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
             }
           />
           <TooltipContent>1-bar count-in before recording starts.</TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <label className="flex items-center gap-1.5 text-xs">
+                <Switch
+                  checked={metronomeOnPlay}
+                  onCheckedChange={setMetronomeOnPlay}
+                  aria-label="Metronome on play"
+                />
+                <span className="text-muted-foreground">Click</span>
+              </label>
+            }
+          />
+          <TooltipContent>Metronome click during playback (never in exports).</TooltipContent>
         </Tooltip>
 
         {isRecording || isCountIn ? (

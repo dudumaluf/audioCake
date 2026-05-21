@@ -1,4 +1,5 @@
 import * as Tone from 'tone'
+import type { SoundTouchNode } from '@soundtouchjs/audio-worklet'
 import {
   continueMidiClock,
   startMidiClock,
@@ -8,6 +9,7 @@ import {
 import { scheduleMidiClip, type ScheduledMidiClip } from '@/lib/midi/player'
 import { getMidiAsset } from '@/lib/storage/idb'
 import { readAudioBlob } from '@/lib/storage/opfs'
+import { applyStretchParams, createSoundTouchNode, registerSoundTouch } from './soundtouch'
 import type { Clip, MidiAsset, Track } from '@/lib/types'
 
 /**
@@ -28,6 +30,8 @@ import type { Clip, MidiAsset, Track } from '@/lib/types'
 
 interface TrackChannel {
   channel: Tone.Channel
+  eq: Tone.EQ3
+  compressor: Tone.Compressor
   /** Last applied solo state across all tracks (recomputed each apply). */
   effectiveMute: boolean
 }
@@ -36,7 +40,11 @@ interface ClipPlayer {
   player: Tone.Player
   trackId: string
   buffer: AudioBuffer | null
+  /** True when the cached `buffer` is the reversed flavour of the source. */
+  bufferReversed: boolean
   loadingPromise: Promise<void> | null
+  /** Inserted between player and track when stretch / pitch != neutral. */
+  stretchNode: SoundTouchNode | null
 }
 
 interface MidiSchedule {
@@ -55,11 +63,35 @@ let initialized = false
 let activeClockPortId: string | null = null
 let activeBpm = 120
 
+let masterLimiter: Tone.Limiter | null = null
+let metronomeSynth: Tone.MembraneSynth | null = null
+let metronomeEventId: number | null = null
+let metronomeEnabled = false
+
 function ensureInit() {
   if (initialized) return
+  // Master limiter sits between everything and Tone.Destination so peaks
+  // never exceed ~-0.3 dBFS (prevents clipping at the output stage and on
+  // export).
+  masterLimiter = new Tone.Limiter(-0.3)
   masterMeter = new Tone.Meter({ channelCount: 2, normalRange: true })
-  Tone.getDestination().chain(masterMeter)
+  masterLimiter.chain(masterMeter, Tone.getDestination())
   initialized = true
+}
+
+/** Master signal node tracks should send to. Routes through the master limiter. */
+function masterInput(): Tone.InputNode {
+  ensureInit()
+  return masterLimiter!
+}
+
+/**
+ * SoundTouch processor must be registered before any node can be created.
+ * Called from `startTransport`; safe to call multiple times.
+ */
+async function ensureSoundTouchRegistered(): Promise<void> {
+  const ctx = Tone.getContext().rawContext as unknown as BaseAudioContext
+  await registerSoundTouch(ctx)
 }
 
 export function getMasterMeter(): Tone.Meter | null {
@@ -71,6 +103,46 @@ export function setBpm(bpm: number): void {
   Tone.getTransport().bpm.value = bpm
   activeBpm = bpm
   if (activeClockPortId) updateMidiClockBpm(activeClockPortId, bpm)
+}
+
+/**
+ * Enable or disable the metronome. When enabled, a click sounds on every
+ * quarter note during playback (and during the count-in already provided
+ * by the recorder hook). The click is routed direct-to-destination so it
+ * bypasses the master limiter (and never appears in exports because we
+ * only schedule it when the live transport plays).
+ */
+export function setMetronomeEnabled(enabled: boolean): void {
+  ensureInit()
+  metronomeEnabled = enabled
+  if (!enabled) {
+    cancelMetronome()
+  } else if (Tone.getTransport().state === 'started') {
+    scheduleMetronome()
+  }
+}
+
+function scheduleMetronome(): void {
+  if (!metronomeEnabled) return
+  if (!metronomeSynth) {
+    metronomeSynth = new Tone.MembraneSynth({
+      pitchDecay: 0.01,
+      octaves: 4,
+      volume: -10,
+    }).toDestination()
+  }
+  cancelMetronome()
+  const transport = Tone.getTransport()
+  metronomeEventId = transport.scheduleRepeat((time) => {
+    metronomeSynth?.triggerAttackRelease('C5', '32n', time)
+  }, '4n')
+}
+
+function cancelMetronome(): void {
+  if (metronomeEventId != null) {
+    Tone.getTransport().clear(metronomeEventId)
+    metronomeEventId = null
+  }
 }
 
 /**
@@ -91,8 +163,17 @@ export function applyTracks(tracks: Track[]): void {
         pan: t.pan,
         mute: t.mute,
       })
-      channel.toDestination()
-      entry = { channel, effectiveMute: t.mute }
+      const eq = new Tone.EQ3({ low: 0, mid: 0, high: 0 })
+      const compressor = new Tone.Compressor({
+        threshold: -18,
+        ratio: 2,
+        attack: 0.01,
+        release: 0.1,
+      })
+      // Per-track signal flow: incoming → EQ → Compressor → Channel (gain/pan/mute) → master limiter
+      eq.chain(compressor, channel)
+      channel.connect(masterInput())
+      entry = { channel, eq, compressor, effectiveMute: t.mute }
       trackChannels.set(t.id, entry)
     }
     entry.channel.volume.value = t.gainDb
@@ -100,16 +181,32 @@ export function applyTracks(tracks: Track[]): void {
     const effectiveMute = anySoloed ? !t.solo : t.mute
     entry.channel.mute = effectiveMute
     entry.effectiveMute = effectiveMute
+
+    // Apply EQ / compressor settings if specified; otherwise leave defaults
+    // (flat EQ, gentle compressor that does ~nothing at threshold -18).
+    if (t.eq) {
+      entry.eq.low.value = t.eq.low
+      entry.eq.mid.value = t.eq.mid
+      entry.eq.high.value = t.eq.high
+    }
+    if (t.compressor) {
+      entry.compressor.threshold.value = t.compressor.thresholdDb
+      entry.compressor.ratio.value = t.compressor.enabled ? t.compressor.ratio : 1
+    }
   }
 
   for (const [id, entry] of trackChannels) {
     if (!liveIds.has(id)) {
       try {
         entry.channel.disconnect()
+        entry.eq.disconnect()
+        entry.compressor.disconnect()
       } catch {
         /* */
       }
       entry.channel.dispose()
+      entry.eq.dispose()
+      entry.compressor.dispose()
       trackChannels.delete(id)
     }
   }
@@ -145,27 +242,35 @@ export function applyClips(clips: Clip[]): void {
         fadeOut: c.fadeOut,
         volume: c.gainDb,
       })
-      const trackChannel = trackChannels.get(c.trackId)
-      if (trackChannel) player.connect(trackChannel.channel)
-      else player.toDestination()
-      entry = { player, trackId: c.trackId, buffer: null, loadingPromise: null }
+      entry = {
+        player,
+        // mark as unassigned so rewireClipRouting (called below) does the connect.
+        trackId: '__unassigned__',
+        buffer: null,
+        bufferReversed: false,
+        loadingPromise: null,
+        stretchNode: null,
+      }
       clipPlayers.set(c.id, entry)
     }
     entry.player.fadeIn = c.fadeIn
     entry.player.fadeOut = c.fadeOut
     entry.player.volume.value = c.gainDb
 
-    if (entry.trackId !== c.trackId) {
-      try {
-        entry.player.disconnect()
-      } catch {
-        /* */
-      }
-      const newChannel = trackChannels.get(c.trackId)
-      if (newChannel) entry.player.connect(newChannel.channel)
-      else entry.player.toDestination()
-      entry.trackId = c.trackId
+    // Match the player's playbackRate to the requested stretch so the
+    // SoundTouch node (when present) compensates pitch to keep it stable.
+    const ts = c.timeStretch ?? 1
+    const ps = c.pitchSemitones ?? 0
+    entry.player.playbackRate = ts
+
+    // Reverse change forces a buffer re-load on next preload.
+    const wantsReverse = !!c.reverse
+    if (entry.buffer && entry.bufferReversed !== wantsReverse) {
+      entry.buffer = null
+      entry.loadingPromise = null
     }
+
+    rewireClipRouting(entry, c.trackId, ts !== 1 || ps !== 0, { ts, ps })
   }
 
   for (const [id, entry] of clipPlayers) {
@@ -188,25 +293,112 @@ export function applyClips(clips: Clip[]): void {
 }
 
 /**
- * Load the audio for a clip's asset if we haven't already. Returns the
- * decoded AudioBuffer (cached per assetId).
+ * (Re)connect a clip player into its track. When stretch/pitch is non-neutral,
+ * insert a SoundTouchNode between the player and the track channel; otherwise
+ * connect the player directly. Idempotent and routing-change safe.
  */
-async function ensureClipBuffer(clipId: string, assetId: string): Promise<AudioBuffer> {
+function rewireClipRouting(
+  entry: ClipPlayer,
+  trackId: string,
+  needsStretch: boolean,
+  params: { ts: number; ps: number },
+): void {
+  const movedTrack = entry.trackId !== trackId
+  const hadStretch = !!entry.stretchNode
+  if (!movedTrack && hadStretch === needsStretch) {
+    if (entry.stretchNode)
+      applyStretchParams(entry.stretchNode, { timeStretch: params.ts, pitchSemitones: params.ps })
+    return
+  }
+
+  try {
+    entry.player.disconnect()
+  } catch {
+    /* */
+  }
+  if (entry.stretchNode) {
+    try {
+      entry.stretchNode.disconnect()
+    } catch {
+      /* */
+    }
+    entry.stretchNode = null
+  }
+
+  const trackChannel = trackChannels.get(trackId)
+  // Route into the track's EQ (start of the per-track chain), not directly
+  // to the channel — otherwise we bypass EQ + compressor.
+  const target = (trackChannel?.eq ?? Tone.getDestination()) as Tone.InputNode
+
+  if (needsStretch) {
+    try {
+      const ctx = Tone.getContext().rawContext as unknown as BaseAudioContext
+      const stNode = createSoundTouchNode(ctx, {
+        timeStretch: params.ts,
+        pitchSemitones: params.ps,
+      })
+      // Bridge native AudioNode → Tone graph via a Tone.Gain (acts as a typed
+      // pass-through that we can `.connect(target)` on the Tone side).
+      const bridge = new Tone.Gain(1)
+      entry.player.connect(stNode as unknown as Tone.InputNode)
+      stNode.connect(bridge.input as unknown as AudioNode)
+      bridge.connect(target)
+      entry.stretchNode = stNode
+    } catch (e) {
+      console.warn('SoundTouch wiring failed (falling back to direct):', e)
+      entry.player.connect(target)
+    }
+  } else {
+    entry.player.connect(target)
+  }
+  entry.trackId = trackId
+}
+
+/**
+ * Load the audio for a clip's asset if we haven't already.
+ *
+ * If `reverse` is true we lazily build a reversed copy in a separate cache
+ * keyed by `${assetId}:rev` so a clip toggling reverse on/off doesn't
+ * thrash the original decode cache.
+ */
+async function ensureClipBuffer(
+  clipId: string,
+  assetId: string,
+  reverse: boolean,
+): Promise<AudioBuffer> {
   const entry = clipPlayers.get(clipId)
   if (!entry) throw new Error(`No player for clip ${clipId}`)
-  let buffer = decodeCache.get(assetId)
+  const cacheKey = reverse ? `${assetId}:rev` : assetId
+  let buffer = decodeCache.get(cacheKey)
   if (!buffer) {
-    const blob = await readAudioBlob(assetId)
-    if (!blob) throw new Error(`Audio blob missing for asset ${assetId}`)
-    const arr = await blob.arrayBuffer()
-    buffer = await Tone.getContext().decodeAudioData(arr)
-    decodeCache.set(assetId, buffer)
+    let base = decodeCache.get(assetId)
+    if (!base) {
+      const blob = await readAudioBlob(assetId)
+      if (!blob) throw new Error(`Audio blob missing for asset ${assetId}`)
+      const arr = await blob.arrayBuffer()
+      base = await Tone.getContext().decodeAudioData(arr)
+      decodeCache.set(assetId, base)
+    }
+    buffer = reverse ? buildReversedBuffer(base) : base
+    decodeCache.set(cacheKey, buffer)
   }
   if (entry.buffer !== buffer) {
     entry.player.buffer = new Tone.ToneAudioBuffer(buffer)
     entry.buffer = buffer
+    entry.bufferReversed = reverse
   }
   return buffer
+}
+
+function buildReversedBuffer(src: AudioBuffer): AudioBuffer {
+  const ctx = Tone.getContext().rawContext as unknown as BaseAudioContext
+  const out = ctx.createBuffer(src.numberOfChannels, src.length, src.sampleRate)
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const inData = src.getChannelData(ch)
+    const outData = out.getChannelData(ch)
+    for (let i = 0, n = inData.length; i < n; i++) outData[n - 1 - i] = inData[i]!
+  }
+  return out
 }
 
 /**
@@ -220,7 +412,7 @@ export async function preloadClips(clips: Clip[]): Promise<void> {
         const entry = clipPlayers.get(c.id)
         if (!entry) return
         if (!entry.loadingPromise) {
-          entry.loadingPromise = ensureClipBuffer(c.id, c.assetId)
+          entry.loadingPromise = ensureClipBuffer(c.id, c.assetId, !!c.reverse)
             .then(() => undefined)
             .catch((e) => {
               console.error('Clip preload failed', c.id, e)
@@ -277,6 +469,7 @@ export async function startTransport(
 ): Promise<void> {
   ensureInit()
   await Tone.start()
+  await ensureSoundTouchRegistered()
   await preloadClips(clips)
   const transport = Tone.getTransport()
   if (fromSec !== undefined) transport.seconds = fromSec
@@ -291,6 +484,7 @@ export async function startTransport(
   }
 
   transport.start()
+  if (metronomeEnabled) scheduleMetronome()
 }
 
 export function pauseTransport(): void {
@@ -306,6 +500,7 @@ export function pauseTransport(): void {
     sched.scheduled?.cancel()
     sched.scheduled = null
   }
+  cancelMetronome()
   if (activeClockPortId) {
     stopMidiClock()
   }
@@ -326,6 +521,7 @@ export function stopTransport(): void {
     sched.scheduled?.cancel()
     sched.scheduled = null
   }
+  cancelMetronome()
   if (activeClockPortId) {
     stopMidiClock()
     activeClockPortId = null

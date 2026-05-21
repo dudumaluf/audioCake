@@ -4,6 +4,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-05-21 — Phase 6: effects + time/pitch
+
+### Added
+
+- `Clip.timeStretch`, `Clip.pitchSemitones`, `Clip.reverse` (all optional, default to neutral).
+- SoundTouch AudioWorklet integration (`@soundtouchjs/audio-worklet` v2). Per-clip stretch + pitch via `playbackRate` synced between `Tone.Player` and the SoundTouch node.
+- Reverse playback via per-asset reversed-buffer cache (no destructive change to source).
+- Inspector controls for audio clips: time stretch (0.5x..2x), pitch (-12..+12 semitones), reverse toggle.
+- Per-track 3-band EQ (Tone.EQ3) + Compressor (Tone.Compressor) automatically inserted in every track chain; default values are flat / gentle so existing projects sound unchanged.
+- Master limiter (Tone.Limiter at -0.3 dB) always-on between tracks and Tone.Destination so peaks never clip.
+- Compact 3-band EQ controls in the mixer channel strip.
+- Optional metronome with a "Click" toggle in the topbar; routes direct-to-destination (bypasses limiter, never appears in exports).
+- Multi-format mix export now applies time-stretch / pitch / reverse offline so what you hear matches what you export.
+
+### Deferred to a focused patch
+
+- Reverb / delay sends (need shared FX returns + send sliders in the mixer).
+- Bounce-MIDI-to-audio (architecture supports it via existing recorder + scheduler; UX wiring is a focused task).
+
 ## [0.5.0] — 2026-05-21 — Phase 5: MIDI
 
 ### Added
