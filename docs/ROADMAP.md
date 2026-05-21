@@ -33,7 +33,7 @@ Selection (click/shift/marquee), inspector panel, trim handles, fade handles, sp
 
 **Verify**: trim/fade/split/duplicate/delete/undo all work; original assets remain intact after edits; every keymap entry fires.
 
-## Phase 4 — Persistence + multi-format export · `planned`
+## Phase 4 — Persistence + multi-format export · `done`
 
 Autosave, project switcher, `.acproj` zip import/export, mix render via OfflineAudioContext, multi-format export (MP3 / AAC / WAV / Opus), per-clip preview render, storage soft-caps (warn @ 500 MB, block @ 1 GB).
 

@@ -177,6 +177,19 @@ Format: `ADR-NNN — Title (YYYY-MM-DD) — author`
 
 ---
 
+## ADR-017 — Swap MP3 encoder to `@audio/encode-mp3` (2026-05-21)
+
+**Context**: Plan named `@mediabunny/mp3-encoder` for MP3 export. On integration we discovered that package only exports `registerMp3Encoder()` — it's a polyfill that registers a codec with the `mediabunny` library, not a standalone encoder. Pulling Mediabunny in would balloon our export pipeline for a single format.
+
+**Decision**: Use `@audio/encode-mp3` (v1.1.1, MIT, published April 2026), which wraps `wasm-media-encoders` (LAME via WASM) with a clean `encoder.encode(chunk) → Uint8Array; encoder.flush()` API.
+
+**Trade-offs**:
+- MIT license, no GPL concerns.
+- ~190 KB module size (acceptable; loaded only on first MP3 export).
+- Mature underlying LAME implementation.
+
+---
+
 ## ADR-016 — shadcn `base-nova` preset implies Base UI + react-resizable-panels v4 (2026-05-21)
 
 **Context**: Phase 1 build surfaced several small API mismatches between the shadcn-installed components and the in-tree wrappers.

@@ -83,3 +83,33 @@ export interface LoopRegion {
  * 1/4 = beat, 1/8 = eighth, 1/16 = sixteenth, 'bar' = whole bar.
  */
 export type SnapResolution = 'off' | 'bar' | '1/4' | '1/8' | '1/16'
+
+/** Current project schema version. Bump when migrations are needed. */
+export const PROJECT_SCHEMA_VERSION = 1
+
+/**
+ * Project envelope: a save-/loadable, portable unit.
+ *
+ * `tracks` and `clips` are the structural state. `audioAssetIds` records
+ * which library assets this project depends on, so an `.acproj` export
+ * can bundle the matching OPFS blobs.
+ *
+ * Snap / zoom / loop are persisted so closing and reopening the project
+ * returns you to the same view.
+ */
+export interface Project {
+  id: string
+  name: string
+  bpm: number
+  sampleRate: SampleRate
+  tracks: Track[]
+  clips: Clip[]
+  audioAssetIds: string[]
+  loopRegion: LoopRegion | null
+  loopEnabled: boolean
+  snap: SnapResolution
+  pxPerSec: number
+  createdAt: number
+  updatedAt: number
+  version: number
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
 import { Inspector } from '@/components/inspector/Inspector'
 import { Library } from '@/components/library/Library'
@@ -10,8 +10,10 @@ import { Topbar } from '@/components/topbar/Topbar'
 import { usePlaybackEngine } from '@/hooks/usePlaybackEngine'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
+import { useAutosave } from '@/hooks/useAutosave'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
+import { listProjects } from '@/lib/storage/idb'
 import { snapSeconds } from '@/lib/utils/time'
 
 /**
@@ -25,6 +27,8 @@ import { snapSeconds } from '@/lib/utils/time'
 export function AppShell() {
   const { play, pause, stop } = usePlaybackEngine()
   const { undo, redo } = useUndoRedo()
+  useAutosave()
+  useBootstrapProject()
 
   // Stable handler object so the shortcut effect doesn't re-bind every render.
   const handlers = useMemo(
@@ -83,6 +87,10 @@ export function AppShell() {
     [play, pause, stop, undo, redo],
   )
 
+  // `record.toggle` is handled by `useRecorder` indirectly; we don't bind
+  // it globally because the recorder needs its own ref-stable callback.
+  // Record-via-keyboard arrives in a later phase.
+
   useKeyboardShortcuts(handlers)
 
   return (
@@ -119,4 +127,28 @@ export function AppShell() {
       </div>
     </div>
   )
+}
+
+/**
+ * On first mount, load the most-recent saved project from IndexedDB so
+ * the user picks up where they left off. If there are no saved projects,
+ * leave the default "Untitled" state in place.
+ */
+function useBootstrapProject(): void {
+  const loadProjectData = useProjectStore((s) => s.loadProjectData)
+  const triedRef = useRef(false)
+
+  useEffect(() => {
+    if (triedRef.current) return
+    triedRef.current = true
+    void (async () => {
+      try {
+        const projects = await listProjects()
+        const first = projects[0]
+        if (first) loadProjectData(first)
+      } catch {
+        // Ignore — we still have the in-memory default project.
+      }
+    })()
+  }, [loadProjectData])
 }

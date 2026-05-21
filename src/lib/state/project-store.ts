@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { temporal } from 'zundo'
 import { ulid } from 'ulid'
-import type { Clip, LoopRegion, SnapResolution, Track } from '@/lib/types'
+import type { Clip, LoopRegion, Project, SampleRate, SnapResolution, Track } from '@/lib/types'
+import { PROJECT_SCHEMA_VERSION } from '@/lib/types'
 
 /**
  * Project state: tracks, clips, BPM, loop region, selection, snap settings.
@@ -13,6 +14,9 @@ import type { Clip, LoopRegion, SnapResolution, Track } from '@/lib/types'
  */
 
 interface ProjectState {
+  projectId: string
+  projectName: string
+  sampleRate: SampleRate
   bpm: number
   tracks: Track[]
   clips: Clip[]
@@ -21,7 +25,10 @@ interface ProjectState {
   snap: SnapResolution
   pxPerSec: number
   selectedClipIds: string[]
+  /** Increments every time we mutate structural state; used to detect dirty for autosave. */
+  dirtyTick: number
 
+  setProjectName: (name: string) => void
   setBpm: (bpm: number) => void
   setSnap: (snap: SnapResolution) => void
   setPxPerSec: (px: number) => void
@@ -45,6 +52,13 @@ interface ProjectState {
   selectClips: (ids: string[]) => void
   toggleClipSelected: (id: string) => void
   clearSelection: () => void
+
+  /** Snapshot the current structural state into a Project envelope. */
+  toProject: () => Project
+  /** Replace structural state from a Project; clears selection + undo history. */
+  loadProjectData: (project: Project) => void
+  /** Reset to a fresh empty project (default tracks). */
+  newProject: (name: string, sampleRate?: SampleRate) => void
 }
 
 const DEFAULT_TRACK_COLORS = [
@@ -72,6 +86,9 @@ function defaultTracks(): Track[] {
 export const useProjectStore = create<ProjectState>()(
   temporal(
     (set, get) => ({
+      projectId: ulid(),
+      projectName: 'Untitled',
+      sampleRate: 48000,
       bpm: 120,
       tracks: defaultTracks(),
       clips: [],
@@ -80,7 +97,9 @@ export const useProjectStore = create<ProjectState>()(
       snap: '1/16',
       pxPerSec: 80,
       selectedClipIds: [],
+      dirtyTick: 0,
 
+      setProjectName: (projectName) => set({ projectName }),
       setBpm: (bpm) => set({ bpm: Math.max(20, Math.min(300, bpm)) }),
       setSnap: (snap) => set({ snap }),
       setPxPerSec: (px) => set({ pxPerSec: Math.max(10, Math.min(800, px)) }),
@@ -217,11 +236,67 @@ export const useProjectStore = create<ProjectState>()(
             : [...s.selectedClipIds, id],
         })),
       clearSelection: () => set({ selectedClipIds: [] }),
+
+      toProject: () => {
+        const s = get()
+        const now = Date.now()
+        return {
+          id: s.projectId,
+          name: s.projectName,
+          sampleRate: s.sampleRate,
+          bpm: s.bpm,
+          tracks: s.tracks,
+          clips: s.clips,
+          audioAssetIds: Array.from(new Set(s.clips.map((c) => c.assetId))),
+          loopRegion: s.loopRegion,
+          loopEnabled: s.loopEnabled,
+          snap: s.snap,
+          pxPerSec: s.pxPerSec,
+          createdAt: now,
+          updatedAt: now,
+          version: PROJECT_SCHEMA_VERSION,
+        }
+      },
+
+      loadProjectData: (p) => {
+        set({
+          projectId: p.id,
+          projectName: p.name,
+          sampleRate: p.sampleRate,
+          bpm: p.bpm,
+          tracks: p.tracks,
+          clips: p.clips,
+          loopRegion: p.loopRegion,
+          loopEnabled: p.loopEnabled,
+          snap: p.snap,
+          pxPerSec: p.pxPerSec,
+          selectedClipIds: [],
+        })
+        useProjectStore.temporal.getState().clear()
+      },
+
+      newProject: (name, sampleRate = 48000) => {
+        set({
+          projectId: ulid(),
+          projectName: name,
+          sampleRate,
+          bpm: 120,
+          tracks: defaultTracks(),
+          clips: [],
+          loopRegion: null,
+          loopEnabled: false,
+          snap: '1/16',
+          pxPerSec: 80,
+          selectedClipIds: [],
+        })
+        useProjectStore.temporal.getState().clear()
+      },
     }),
     {
       // Exclude transient fields from the undo history so a Cmd+Z doesn't
       // restore your old selection or zoom alongside the structural change.
       partialize: (state) => ({
+        projectName: state.projectName,
         bpm: state.bpm,
         tracks: state.tracks,
         clips: state.clips,
@@ -232,3 +307,29 @@ export const useProjectStore = create<ProjectState>()(
     },
   ),
 )
+
+// Bump `dirtyTick` whenever any structural field changes. Autosave watches it
+// (debounced) so we don't touch IDB on every keystroke or pixel of clip drag.
+const STRUCTURAL_KEYS = [
+  'projectName',
+  'bpm',
+  'tracks',
+  'clips',
+  'loopRegion',
+  'loopEnabled',
+  'snap',
+  'pxPerSec',
+  'sampleRate',
+] as const
+
+useProjectStore.subscribe((state, prev) => {
+  for (const k of STRUCTURAL_KEYS) {
+    if (state[k] !== prev[k]) {
+      // Avoid an infinite loop: only set if dirtyTick didn't itself just change.
+      if (state.dirtyTick === prev.dirtyTick) {
+        useProjectStore.setState({ dirtyTick: state.dirtyTick + 1 })
+      }
+      return
+    }
+  }
+})

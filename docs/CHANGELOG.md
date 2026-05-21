@@ -4,6 +4,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-05-21 — Phase 4: persistence + multi-format export
+
+### Added
+
+- `Project` envelope type (id / name / bpm / sampleRate / tracks / clips / loop / snap / pxPerSec / timestamps / schema version).
+- Dexie schema bumped to v2 with a `projects` table; preserves existing audio assets.
+- Project store actions: `setProjectName`, `toProject`, `loadProjectData`, `newProject` (with sample rate choice).
+- `dirtyTick` driven by a Zustand subscription; autosave (5 s debounce) writes the current project to IndexedDB on change, plus a best-effort flush on `beforeunload`.
+- `useAutosave` and `useBootstrapProject` hooks in AppShell; on first mount we open the most-recently-edited project.
+- ProjectSwitcher in topbar: rename inline, dropdown with New / Save now / Export .acproj / Import .acproj / Open recent (with per-project duplicate + delete).
+- `.acproj` file format: zip containing `project.json`, `assets.json` (with base64-encoded peaks), and `audio/<id>.wav` from OPFS.
+- OfflineAudioContext mix render with per-track gain/pan/mute/solo and per-clip fades + gain.
+- Multi-format export dialog with format (MP3 / AAC / WAV / Opus), bitrate / bit-depth selectors, normalize-to-−1 dBFS, live estimated file size, two-stage progress bar (render → encode).
+- MP3 via `@audio/encode-mp3` (WASM LAME, MIT, fresh April 2026).
+- AAC / Opus via native `WebCodecs.AudioEncoder` (gracefully degrades / disables on Firefox).
+- Inspector inputs no longer trigger keyboard shortcuts (text-input focus skip).
+
 ## [0.3.0] — 2026-05-21 — Phase 3: editing + undo + shortcuts
 
 ### Added

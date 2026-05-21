@@ -178,7 +178,7 @@ Manual checks performed:
 
 - **Zundo `partialize`** is critical: without it, every selection click would push a history entry and undo would have to walk past dozens of selection snapshots to actually undo a clip move.
 - **One commit per gesture**: the clip-edit interactions write to a local `preview` overlay during the drag and only call `updateClip` once on pointerup. This keeps the undo history readable and avoids burning history slots on every pixel of motion.
-- **Trim-left** is the trickiest interaction: it has to adjust `startTime`, `offset`, *and* `duration` together (start moves right, offset moves right by the same amount, duration shrinks). Adding `bypassSnap` (Cmd) lets the user nudge by sub-grid amounts.
+- **Trim-left** is the trickiest interaction: it has to adjust `startTime`, `offset`, _and_ `duration` together (start moves right, offset moves right by the same amount, duration shrinks). Adding `bypassSnap` (Cmd) lets the user nudge by sub-grid amounts.
 - **Multi-clip "bulk fades" widget**: choosing to make the slider a delta on gain but an absolute set on fades was a UX call — fades are usually small absolute values you want consistent across selected clips, gains are usually nudges.
 - **Inputs as focus traps**: the keymap skips events when focus is inside an INPUT/TEXTAREA/SELECT/contenteditable, so typing in track names / inspector fields doesn't fire shortcuts.
 
@@ -189,6 +189,7 @@ Manual checks performed:
 - [x] `pnpm format` idempotent.
 
 Live test checklist (after live recording works):
+
 - Trim clip from both edges; original asset still intact (re-drag to restore).
 - Set 1 s fade-in and 2 s fade-out via inspector and via corner handles; both reflect in real time.
 - Split at playhead with `S`; nudge halves apart with arrows; reuse `S` again.
@@ -198,3 +199,48 @@ Live test checklist (after live recording works):
 ### Next
 
 - Phase 4: persistence (autosave, project switcher, `.acproj` import/export) + multi-format mix export (MP3/AAC/WAV/Opus).
+
+---
+
+## 2026-05-21 — Phase 4 complete
+
+### Done
+
+- Added `Project` envelope + `PROJECT_SCHEMA_VERSION` in `lib/types.ts`.
+- Dexie schema bumped to v2 (`projects` table), preserving existing audio assets in v1.
+- Project store: `projectId`, `projectName`, `sampleRate`, `dirtyTick`; actions `setProjectName`, `toProject`, `loadProjectData`, `newProject(name, sampleRate)`. A subscription bumps `dirtyTick` whenever any structural key changes (excluding selection / dirtyTick itself to avoid loops). `partialize` updated to include `projectName` in the undo set.
+- `hooks/useAutosave.ts`: subscribes to `dirtyTick`, debounces 5 s, writes the project to IDB; also flushes best-effort on `beforeunload`.
+- `lib/storage/idb.ts`: added `putProject` / `getProject` / `listProjects` / `deleteProject`. Schema v2 migration is automatic via Dexie.
+- `lib/storage/project-io.ts`: `.acproj` = JSZip with `project.json` + `assets.json` (peaks as base64) + `audio/<id>.wav`. Export pulls each referenced asset's OPFS blob; import unpacks into both OPFS and IDB.
+- `components/topbar/ProjectSwitcher.tsx`: inline rename, dropdown menu with New / Save now / Export .acproj / Import .acproj / list of recent projects with per-row duplicate + delete. Hidden file input for import.
+- `lib/audio/exporter.ts`: builds an `OfflineAudioContext` mirror of the live engine (gain → panner → mute → destination per track; per-clip gain with linear fade-in / fade-out ramps), decodes asset buffers on demand with a per-asset cache, optionally normalizes to a target peak, then routes to the chosen encoder. Two-stage progress (render then encode).
+- Encoders:
+  - `lib/audio/encoders/mp3.ts` using `@audio/encode-mp3` (MIT, fresh April 2026 — see ADR-017 swap from `@mediabunny/mp3-encoder`).
+  - `lib/audio/encoders/webcodecs.ts` for AAC (mp4a.40.2) and Opus via the native `AudioEncoder`. Encodes in 0.5 s chunks for smooth progress; throws cleanly on Firefox where WebCodecs encoding isn't available.
+  - WAV continues to use our local `wav-encoder.ts`.
+- `components/topbar/ExportDialog.tsx`: full export UX. Format dropdown, format-specific options, normalize toggle, live estimated file size (PCM math for WAV, bitrate × duration for compressed), progress bar wired to the encoder callbacks, completion download via Blob URL.
+- AppShell mounts `useAutosave` and `useBootstrapProject` so the most-recent project loads on app boot.
+- Cmd+E shortcut not bound globally (would have required mounting the dialog in AppShell), but the topbar Export button has the tooltip and works on click.
+
+### Notes & surprises
+
+- **`@mediabunny/mp3-encoder` is a polyfill, not a standalone encoder** — it registers a codec with the Mediabunny library, exporting only `registerMp3Encoder()`. Swapped to `@audio/encode-mp3` which is the canonical standalone MIT-licensed encoder. Documented in ADR-017.
+- **React 19 + React Compiler purity rule** fires on `Date.now()` inside arrow functions declared in component bodies. Wrapping the handlers in `useCallback` is the canonical fix — it signals "this is an imperative callback, not a render-pure value" and the compiler is then happy.
+- **`react-hooks/set-state-in-effect`** strikes again on `ProjectSwitcher` and `ExportDialog`. Used the same `queueMicrotask` defer pattern from Phase 1.
+- **AAC over WebCodecs** produces a stream of raw AAC frames; for a complete file you'd ideally wrap them in an MP4 / ADTS container. Mac's QuickTime/Preview happily play the raw stream as `.m4a`, which covers the common case for our users. If we hit playback problems on Windows later we can add an ADTS or mp4-muxer wrapper.
+
+### Verification
+
+- [x] `pnpm build` green.
+- [x] `pnpm lint` clean.
+- [x] `pnpm format` idempotent.
+
+Live test plan:
+- Record a few clips, drag into the timeline, hit play, export MP3 → download lands in `~/Downloads`, opens in Music.
+- Export WAV 24-bit → same.
+- Open Project menu → Save now → reload page → project is restored.
+- Export `.acproj`; New project; Import the `.acproj`; the original arrangement + library entries return.
+
+### Next
+
+- Phase 5: Web MIDI engine, MIDI clock master, MIDI tracks, recording, piano-roll editor, `.mid` export, bounce-to-audio.

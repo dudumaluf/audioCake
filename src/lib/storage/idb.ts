@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie'
-import type { AudioAsset } from '@/lib/types'
+import type { AudioAsset, Project } from '@/lib/types'
 
 /**
  * Dexie-wrapped IndexedDB for structured project + asset metadata.
@@ -26,11 +26,17 @@ interface StoredAudioAsset {
 
 class AudioCakeDB extends Dexie {
   audioAssets!: Table<StoredAudioAsset, string>
+  projects!: Table<Project, string>
 
   constructor() {
     super('audiocake')
     this.version(1).stores({
       audioAssets: 'id, createdAt, name',
+    })
+    // v2 adds the projects table. Existing audioAssets data carries over.
+    this.version(2).stores({
+      audioAssets: 'id, createdAt, name',
+      projects: 'id, updatedAt, name',
     })
   }
 }
@@ -83,4 +89,23 @@ export async function renameAudioAsset(id: string, name: string): Promise<void> 
 
 export async function deleteAudioAssetRecord(id: string): Promise<void> {
   await db.audioAssets.delete(id)
+}
+
+// ---- Projects ----
+
+export async function putProject(project: Project): Promise<void> {
+  await db.projects.put(project)
+}
+
+export async function getProject(id: string): Promise<Project | null> {
+  const p = await db.projects.get(id)
+  return p ?? null
+}
+
+export async function listProjects(): Promise<Project[]> {
+  return db.projects.orderBy('updatedAt').reverse().toArray()
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  await db.projects.delete(id)
 }

@@ -1,12 +1,15 @@
 'use client'
 
-import { Circle, Loader2, Pause, Play, Repeat, Square, SkipBack } from 'lucide-react'
+import { Circle, Download, Loader2, Pause, Play, Repeat, SkipBack, Square } from 'lucide-react'
+import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LevelMeter } from '@/components/io/LevelMeter'
 import { DevicePicker } from '@/components/io/DevicePicker'
+import { ExportDialog } from './ExportDialog'
+import { ProjectSwitcher } from './ProjectSwitcher'
 import { useRecorder } from '@/hooks/useRecorder'
 import { useIOStore } from '@/lib/state/io-store'
 import { useProjectStore } from '@/lib/state/project-store'
@@ -40,13 +43,13 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
   const isCountIn = recorder.state === 'count-in'
   const isSaving = recorder.state === 'saving'
   const isMonitoring = recorder.state === 'monitoring' || isCountIn
+  const [exportOpen, setExportOpen] = useState(false)
 
   return (
     <header className="border-border bg-panel/60 flex h-14 shrink-0 items-center gap-3 border-b px-3 backdrop-blur">
-      <div className="flex items-center gap-2 pr-2">
+      <div className="flex items-center gap-2 pr-1">
         <div className="bg-primary size-3 rounded-sm" />
-        <span className="font-semibold tracking-tight">AudioCake</span>
-        <span className="text-muted-foreground hidden text-xs sm:inline">v0.1</span>
+        <ProjectSwitcher />
       </div>
 
       <div className="bg-border/80 h-6 w-px" />
@@ -191,7 +194,26 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
             {isSaving ? 'Saving…' : 'Record'}
           </Button>
         )}
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExportOpen(true)}
+                aria-label="Export mix"
+              >
+                <Download className="size-4" />
+                Export
+              </Button>
+            }
+          />
+          <TooltipContent>Export mix (⌘E)</TooltipContent>
+        </Tooltip>
       </div>
+
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
     </header>
   )
 }
