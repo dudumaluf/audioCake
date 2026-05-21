@@ -34,9 +34,7 @@ export function Inspector() {
       </div>
       <div className="flex-1 overflow-y-auto p-3">
         {selected.length === 0 ? (
-          <div className="text-muted-foreground flex h-full items-center justify-center text-center text-xs">
-            Click a clip to inspect.
-          </div>
+          <ProjectNotes />
         ) : selected.length === 1 ? (
           selected[0]!.kind === 'midi' ? (
             <SingleMidiClipInspector clip={selected[0]!} />
@@ -164,6 +162,27 @@ function SingleClipInspector({ clip }: { clip: Clip }) {
           onChange={(e) => updateClip(clip.id, { reverse: e.target.checked })}
         />
       </label>
+    </div>
+  )
+}
+
+function ProjectNotes() {
+  const notes = useProjectStore((s) => s.notes)
+  const setNotes = useProjectStore((s) => s.setNotes)
+  return (
+    <div className="flex h-full flex-col gap-2">
+      <div className="text-muted-foreground text-[10px] tracking-wider uppercase">
+        Project notes
+      </div>
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        placeholder="Lyrics, BPM ideas, chord progressions, todos…"
+        className="bg-background border-border focus:border-primary/60 flex-1 resize-none rounded-md border p-2 text-xs leading-relaxed outline-none"
+      />
+      <p className="text-muted-foreground text-[10px]">
+        Saved with the project. Click any clip to switch to its inspector.
+      </p>
     </div>
   )
 }

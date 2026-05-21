@@ -154,6 +154,8 @@ export interface Project {
   loopEnabled: boolean
   snap: SnapResolution
   pxPerSec: number
+  /** Free-form notes / lyrics pad, saved with the project. */
+  notes?: string
   createdAt: number
   updatedAt: number
   version: number

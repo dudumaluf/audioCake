@@ -151,3 +151,14 @@
     font-feature-settings: 'tnum' 1;
   }
 }
+
+/* Touch best-effort: bump the click hit area of small icon buttons so the
+   timeline + mixer feel tappable on iPad. Visual sizing stays the same. */
+@media (pointer: coarse) {
+  button[data-slot='button'][class*='size-5'],
+  button[data-slot='button'][class*='size-6'],
+  button[data-slot='button'][class*='size-7'] {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}

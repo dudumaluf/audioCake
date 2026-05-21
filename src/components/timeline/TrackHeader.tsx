@@ -2,11 +2,27 @@
 
 import { Circle, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useMidi } from '@/hooks/useMidi'
 import { useProjectStore } from '@/lib/state/project-store'
 import type { Track } from '@/lib/types'
 import { cn } from '@/lib/utils'
+
+const TRACK_COLORS = [
+  'oklch(75% 0.18 70)', // amber
+  'oklch(75% 0.14 200)', // teal
+  'oklch(70% 0.16 145)', // green
+  'oklch(70% 0.18 320)', // magenta
+  'oklch(70% 0.20 30)', // red-orange
+  'oklch(70% 0.18 250)', // blue
+  'oklch(80% 0.10 90)', // yellow
+  'oklch(60% 0.06 0)', // slate
+]
 
 interface TrackHeaderProps {
   track: Track
@@ -31,7 +47,33 @@ export function TrackHeader({ track, height }: TrackHeaderProps) {
       style={{ height }}
     >
       <div className="flex items-center gap-2">
-        <div className="size-2.5 shrink-0 rounded-[2px]" style={{ background: track.color }} />
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <button
+                aria-label="Pick track color"
+                className="size-2.5 shrink-0 rounded-[2px]"
+                style={{ background: track.color }}
+              />
+            }
+          />
+          <DropdownMenuContent align="start" className="w-auto p-1.5">
+            <div className="grid grid-cols-4 gap-1">
+              {TRACK_COLORS.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => updateTrack(track.id, { color })}
+                  className={cn(
+                    'size-5 rounded-sm border transition-transform hover:scale-110',
+                    track.color === color ? 'border-foreground' : 'border-transparent',
+                  )}
+                  style={{ background: color }}
+                  aria-label={`Color ${color}`}
+                />
+              ))}
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <input
           value={track.name}
           onChange={(e) => updateTrack(track.id, { name: e.target.value })}

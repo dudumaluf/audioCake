@@ -10,6 +10,7 @@ import { LevelMeter } from '@/components/io/LevelMeter'
 import { DevicePicker } from '@/components/io/DevicePicker'
 import { ExportDialog } from './ExportDialog'
 import { ProjectSwitcher } from './ProjectSwitcher'
+import { TapTempo } from './TapTempo'
 import { useRecorder } from '@/hooks/useRecorder'
 import { useIOStore } from '@/lib/state/io-store'
 import { useProjectStore } from '@/lib/state/project-store'
@@ -142,6 +143,7 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
             onChange={(e) => setBpm(Number.parseFloat(e.target.value) || bpm)}
             className="h-6 w-14 px-1 text-center text-xs"
           />
+          <TapTempo />
         </div>
         <div className="bg-border/80 mx-1 h-5 w-px" />
         <div className="font-mono-num flex flex-col items-end leading-tight">

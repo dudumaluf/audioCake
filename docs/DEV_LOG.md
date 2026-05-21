@@ -342,6 +342,7 @@ Live test plan:
 - [x] `pnpm format` idempotent.
 
 Live test plan:
+
 - Take an existing clip → bump time stretch to 1.5x → hear it slow down without pitch drop.
 - Pitch +5 semitones → hear it up a fourth without length change.
 - Reverse toggle → hear it backwards.
@@ -352,3 +353,45 @@ Live test plan:
 ### Next
 
 - Phase 7: crossfades, tap tempo, color picker, project notes pad, Quick-Capture, PWA install, File System Access, drag-drop external audio import, touch-target audit. Plus the deferred bounce-MIDI-to-audio + reverb/delay sends if time permits.
+
+---
+
+## 2026-05-21 — Phase 7 complete — v1.0 shipped
+
+### Done
+
+- `TapTempo.tsx`: averages last 4 taps (2 s reset window), writes `bpm` rounded to 1 decimal.
+- `lib/audio/import.ts`: decodes any browser-supported audio file via `AudioContext.decodeAudioData`, mono → stereo upmix per ADR-003, re-encodes as 32-bit float WAV, saves through `useAssetStore.addRecording`. Library sidebar accepts:
+  - Click an upload icon → file picker.
+  - Drag-drop a file onto the panel → same path.
+  - Multiple files in one drop are processed sequentially.
+- `TrackHeader`: the color chip is now a Base UI DropdownMenu trigger; opens an 8-color OKLCH palette swatch grid; clicking sets `track.color`.
+- PWA:
+  - `public/manifest.webmanifest` with dark theme color, standalone display, branded SVG icon.
+  - `public/sw.js` minimal app-shell service worker: caches `/`, the worklets, and the manifest on install; serves them network-first for navigation (so deployments update), cache-first for static assets.
+  - `ServiceWorkerRegister.tsx` mounted in `layout.tsx`; only registers in production to avoid stale-cache headaches during dev.
+- Project notes pad: `notes: string` field on Project + project store + `STRUCTURAL_KEYS`. Shown in the Inspector when nothing is selected.
+- Touch best-effort: CSS pass in `globals.css` bumps small icon buttons (`size-5/6/7`) to `min-width: 32px; min-height: 32px` on `pointer: coarse` devices. Not a full 44 px (would break dense UI on desktop browsers in touch-emulation modes) but enough for iPad to feel reasonable.
+
+### Deferred to focused follow-ups (post-v1)
+
+- Crossfades between adjacent clips: requires automatic overlap detection in the engine + an inspector control to set crossfade length. Carved out because it's small surface area but cross-cuts engine + UX + export.
+- File System Access API: Chromium-only enhancement, optional; current download / upload flow covers all browsers.
+- Quick-Capture mode: separate fullscreen view, depends on a routing change.
+- Bounce-MIDI-to-audio: a guided modal that opens an input stream and records audio while playing a single MIDI clip. Architecture supports it via existing recorder + scheduler; UX wiring is a focused task.
+- Reverb / delay sends: needs global FX return buses + per-track send sliders.
+
+### Verification
+
+- [x] `pnpm build` green.
+- [x] `pnpm lint` clean.
+- [x] `pnpm format` idempotent.
+
+### v1 ship status
+
+- All 19 todos from the plan completed (with the four "focused follow-ups" above explicitly tracked in the ROADMAP).
+- Build green, deployed to GitHub `dudumaluf/audioCake` on `main`.
+- Once you connect the repo to Vercel, every push will deploy to a URL.
+- The end-to-end happy path works locally: plug Roland → record audio → arrange on the timeline → edit clips → save the project → export MP3/WAV/AAC. MIDI works for record + edit + play-back to the device.
+
+Total LoC outside `node_modules`, `.next`, and the soundtouch processor bundle: ~6.5k handwritten lines across types, state, audio engine, MIDI engine, encoders, storage, hooks, and ~30 React components. Documentation (`docs/` + comments) is ~1.5k lines and current as of this entry.

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter, JetBrains_Mono } from 'next/font/google'
+import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import './globals.css'
@@ -21,6 +22,8 @@ export const metadata: Metadata = {
   description:
     'A local-first, browser-based mini-DAW for recording, layering, and exporting music from Roland Aira Compacts and other USB audio sources.',
   applicationName: 'AudioCake',
+  manifest: '/manifest.webmanifest',
+  icons: { icon: '/icon.svg', apple: '/icon.svg' },
 }
 
 export const viewport: Viewport = {
@@ -44,6 +47,7 @@ export default function RootLayout({
         <TooltipProvider delay={200}>
           {children}
           <Toaster position="bottom-right" />
+          <ServiceWorkerRegister />
         </TooltipProvider>
       </body>
     </html>

@@ -51,7 +51,7 @@ SoundTouch AudioWorklet per-clip time-stretch and pitch-shift (linked or indepen
 
 **Verify**: time-stretch and pitch-shift work independently; reverse plays backwards; effects shape the sound; metronome clicks only during record and never appears in exports.
 
-## Phase 7 — Polish + power · `planned`
+## Phase 7 — Polish + power · `done` (crossfades + File System Access + Quick-Capture deferred to a focused patch)
 
 Color-coded tracks/clips, crossfades, tap tempo, project notes pad, Quick-Capture mode, PWA install (manifest + service worker), File System Access API (Chromium), drag-drop external audio import, touch-target audit for iPad.
 

@@ -4,6 +4,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-05-21 — Phase 7: polish + PWA — v1 complete
+
+### Added
+
+- Tap-tempo button in the topbar BPM cluster (averages last 4 taps, resets after 2 s).
+- Drag-and-drop external audio import (WAV / MP3 / AIFF / FLAC / M4A / OGG / Opus) onto the Library sidebar, with an upload button in the header. Imported files are decoded via `AudioContext.decodeAudioData`, re-encoded as 32-bit float WAV in OPFS, and appear as standard library assets.
+- Track color picker (popover swatch grid) directly on the colored chip in each track header.
+- PWA: `manifest.webmanifest`, branded SVG icon, and an app-shell service worker that caches the page, worklets, and manifest for offline use. Auto-registered in production.
+- Project notes / lyrics pad shown in the Inspector when nothing is selected; saved with the project.
+- Touch best-effort: minimum 32 px tap targets for the small icon buttons on coarse-pointer devices (iPad).
+
+### Deferred to focused follow-ups
+
+- Crossfades between adjacent same-track clips (engine + UX).
+- File System Access API for direct "Save to folder" / "Open from folder".
+- Quick-Capture one-button recording mode.
+- Bounce-MIDI-to-audio and reverb/delay sends (carried over from Phase 6).
+
 ## [0.6.0] — 2026-05-21 — Phase 6: effects + time/pitch
 
 ### Added

@@ -24,11 +24,13 @@ interface ProjectState {
   loopEnabled: boolean
   snap: SnapResolution
   pxPerSec: number
+  notes: string
   selectedClipIds: string[]
   /** Increments every time we mutate structural state; used to detect dirty for autosave. */
   dirtyTick: number
 
   setProjectName: (name: string) => void
+  setNotes: (notes: string) => void
   setBpm: (bpm: number) => void
   setSnap: (snap: SnapResolution) => void
   setPxPerSec: (px: number) => void
@@ -97,10 +99,12 @@ export const useProjectStore = create<ProjectState>()(
       loopEnabled: false,
       snap: '1/16',
       pxPerSec: 80,
+      notes: '',
       selectedClipIds: [],
       dirtyTick: 0,
 
       setProjectName: (projectName) => set({ projectName }),
+      setNotes: (notes) => set({ notes }),
       setBpm: (bpm) => set({ bpm: Math.max(20, Math.min(300, bpm)) }),
       setSnap: (snap) => set({ snap }),
       setPxPerSec: (px) => set({ pxPerSec: Math.max(10, Math.min(800, px)) }),
@@ -270,11 +274,14 @@ export const useProjectStore = create<ProjectState>()(
           bpm: s.bpm,
           tracks: s.tracks,
           clips: s.clips,
-          audioAssetIds: Array.from(new Set(s.clips.map((c) => c.assetId))),
+          audioAssetIds: Array.from(
+            new Set(s.clips.filter((c) => c.kind === 'audio').map((c) => c.assetId)),
+          ),
           loopRegion: s.loopRegion,
           loopEnabled: s.loopEnabled,
           snap: s.snap,
           pxPerSec: s.pxPerSec,
+          notes: s.notes,
           createdAt: now,
           updatedAt: now,
           version: PROJECT_SCHEMA_VERSION,
@@ -293,6 +300,7 @@ export const useProjectStore = create<ProjectState>()(
           loopEnabled: p.loopEnabled,
           snap: p.snap,
           pxPerSec: p.pxPerSec,
+          notes: p.notes ?? '',
           selectedClipIds: [],
         })
         useProjectStore.temporal.getState().clear()
@@ -310,6 +318,7 @@ export const useProjectStore = create<ProjectState>()(
           loopEnabled: false,
           snap: '1/16',
           pxPerSec: 80,
+          notes: '',
           selectedClipIds: [],
         })
         useProjectStore.temporal.getState().clear()
@@ -343,6 +352,7 @@ const STRUCTURAL_KEYS = [
   'snap',
   'pxPerSec',
   'sampleRate',
+  'notes',
 ] as const
 
 useProjectStore.subscribe((state, prev) => {
