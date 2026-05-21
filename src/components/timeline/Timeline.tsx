@@ -1,6 +1,6 @@
 'use client'
 
-import { Layers, Plus, Minus, Magnet, MagnetIcon } from 'lucide-react'
+import { Layers, Magnet, MagnetIcon, Minus, Music, Plus } from 'lucide-react'
 import { useMemo, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import {
@@ -16,10 +16,15 @@ import { TrackHeader } from './TrackHeader'
 import { TrackLane } from './TrackLane'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
-import type { SnapResolution } from '@/lib/types'
+import type { SnapResolution, Track } from '@/lib/types'
 
-const TRACK_HEIGHT = 64
-const HEADER_WIDTH = 180
+const TRACK_HEIGHT_AUDIO = 64
+const TRACK_HEIGHT_MIDI = 86
+const HEADER_WIDTH = 200
+
+function trackHeight(t: Track): number {
+  return t.kind === 'midi' ? TRACK_HEIGHT_MIDI : TRACK_HEIGHT_AUDIO
+}
 
 /**
  * The multi-track timeline.
@@ -35,9 +40,15 @@ export function Timeline() {
   const pxPerSec = useProjectStore((s) => s.pxPerSec)
   const snap = useProjectStore((s) => s.snap)
   const addTrack = useProjectStore((s) => s.addTrack)
+  const addMidiTrack = useProjectStore((s) => s.addMidiTrack)
   const setSnap = useProjectStore((s) => s.setSnap)
   const setPxPerSec = useProjectStore((s) => s.setPxPerSec)
   const playheadSec = useTransportStore((s) => s.playheadSec)
+
+  const totalTrackHeight = useMemo(
+    () => tracks.reduce((sum, t) => sum + trackHeight(t), 0),
+    [tracks],
+  )
 
   // The total timeline length in seconds: enough to fit all clips plus a
   // 16-bar runway so users have empty space to drag into.
@@ -93,10 +104,16 @@ export function Timeline() {
           </Tooltip>
         </div>
 
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => addTrack()}>
-          <Plus className="size-3.5" />
-          Track
-        </Button>
+        <div className="ml-auto flex items-center gap-1">
+          <Button variant="outline" size="sm" onClick={() => addTrack()}>
+            <Plus className="size-3.5" />
+            Audio
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => addMidiTrack()}>
+            <Music className="size-3.5" />
+            MIDI
+          </Button>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -108,12 +125,12 @@ export function Timeline() {
           <div className="bg-panel/60 border-border/60 h-7 shrink-0 border-b" />
           <div className="overflow-y-auto">
             {tracks.map((t) => (
-              <TrackHeader key={t.id} track={t} height={TRACK_HEIGHT} />
+              <TrackHeader key={t.id} track={t} height={trackHeight(t)} />
             ))}
             {tracks.length === 0 && (
               <div className="text-muted-foreground p-4 text-xs">
-                No tracks yet. Click <span className="text-foreground font-medium">+ Track</span> to
-                add one.
+                No tracks yet. Click <span className="text-foreground font-medium">+ Audio</span> or{' '}
+                <span className="text-foreground font-medium">+ MIDI</span> to add one.
               </div>
             )}
           </div>
@@ -128,7 +145,7 @@ export function Timeline() {
                 <TrackLane
                   key={t.id}
                   track={t}
-                  height={TRACK_HEIGHT}
+                  height={trackHeight(t)}
                   pxPerSec={pxPerSec}
                   bpm={bpm}
                 />
@@ -137,7 +154,7 @@ export function Timeline() {
             <Playhead
               pxPerSec={pxPerSec}
               playheadSec={playheadSec}
-              heightPx={tracks.length * TRACK_HEIGHT + 28}
+              heightPx={totalTrackHeight + 28}
             />
           </div>
         </div>

@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import { ClipBlock } from './ClipBlock'
+import { MidiClipBlock } from './MidiClipBlock'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useProjectStore } from '@/lib/state/project-store'
 import { snapTime } from '@/lib/utils/time'
+import { midiAssetDuration } from '@/lib/midi/recorder'
 import type { Track } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
@@ -26,33 +28,55 @@ export function TrackLane({ track, height, pxPerSec, bpm }: TrackLaneProps) {
   const selectedClipIds = useProjectStore((s) => s.selectedClipIds)
   const addClip = useProjectStore((s) => s.addClip)
   const selectClips = useProjectStore((s) => s.selectClips)
-  const assets = useAssetStore((s) => s.assets)
+  const audioAssets = useAssetStore((s) => s.assets)
+  const midiAssets = useAssetStore((s) => s.midiAssets)
   const [dragOver, setDragOver] = useState(false)
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragOver(false)
-    const assetId = e.dataTransfer.getData('application/x-audiocake-asset')
-    if (!assetId) return
-    const asset = assets.find((a) => a.id === assetId)
-    if (!asset) return
+    const audioAssetId = e.dataTransfer.getData('application/x-audiocake-asset')
+    const midiAssetId = e.dataTransfer.getData('application/x-audiocake-midi')
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
     const x = e.clientX - rect.left
     const rawTime = Math.max(0, x / pxPerSec)
     const bypassSnap = e.metaKey || e.ctrlKey
     const startTime = bypassSnap ? rawTime : snapTime(rawTime, snap, bpm)
-    const id = addClip({
-      trackId: track.id,
-      assetId: asset.id,
-      startTime,
-      offset: 0,
-      duration: asset.durationSec,
-      fadeIn: 0,
-      fadeOut: 0,
-      gainDb: 0,
-      name: asset.name,
-    })
-    selectClips([id])
+
+    if (audioAssetId && track.kind === 'audio') {
+      const asset = audioAssets.find((a) => a.id === audioAssetId)
+      if (!asset) return
+      const id = addClip({
+        trackId: track.id,
+        kind: 'audio',
+        assetId: asset.id,
+        startTime,
+        offset: 0,
+        duration: asset.durationSec,
+        fadeIn: 0,
+        fadeOut: 0,
+        gainDb: 0,
+        name: asset.name,
+      })
+      selectClips([id])
+    } else if (midiAssetId && track.kind === 'midi') {
+      const asset = midiAssets.find((a) => a.id === midiAssetId)
+      if (!asset) return
+      const duration = asset.durationSec || midiAssetDuration(asset.notes) || 1
+      const id = addClip({
+        trackId: track.id,
+        kind: 'midi',
+        assetId: asset.id,
+        startTime,
+        offset: 0,
+        duration,
+        fadeIn: 0,
+        fadeOut: 0,
+        gainDb: 0,
+        name: asset.name,
+      })
+      selectClips([id])
+    }
   }
 
   const onBackgroundClick = (e: React.MouseEvent) => {
@@ -79,26 +103,41 @@ export function TrackLane({ track, height, pxPerSec, bpm }: TrackLaneProps) {
       )}
       style={{ height }}
     >
-      {clips.map((c) => (
-        <ClipBlock
-          key={c.id}
-          clip={c}
-          pxPerSec={pxPerSec}
-          trackColor={track.color}
-          selected={selectedClipIds.includes(c.id)}
-          onSelect={(id, additive) => {
-            if (additive) {
-              selectClips(
-                selectedClipIds.includes(id)
-                  ? selectedClipIds.filter((s) => s !== id)
-                  : [...selectedClipIds, id],
-              )
-            } else {
-              selectClips([id])
-            }
-          }}
-        />
-      ))}
+      {clips.map((c) => {
+        const onSelect = (id: string, additive: boolean) => {
+          if (additive) {
+            selectClips(
+              selectedClipIds.includes(id)
+                ? selectedClipIds.filter((s) => s !== id)
+                : [...selectedClipIds, id],
+            )
+          } else {
+            selectClips([id])
+          }
+        }
+        if (c.kind === 'audio') {
+          return (
+            <ClipBlock
+              key={c.id}
+              clip={c}
+              pxPerSec={pxPerSec}
+              trackColor={track.color}
+              selected={selectedClipIds.includes(c.id)}
+              onSelect={onSelect}
+            />
+          )
+        }
+        return (
+          <MidiClipBlock
+            key={c.id}
+            clip={c}
+            pxPerSec={pxPerSec}
+            trackColor={track.color}
+            selected={selectedClipIds.includes(c.id)}
+            onSelect={onSelect}
+          />
+        )
+      })}
     </div>
   )
 }

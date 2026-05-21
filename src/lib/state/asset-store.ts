@@ -1,12 +1,16 @@
 import { create } from 'zustand'
 import {
   deleteAudioAssetRecord,
+  deleteMidiAsset as idbDeleteMidiAsset,
   listAudioAssets,
+  listMidiAssets,
   putAudioAsset,
+  putMidiAsset,
   renameAudioAsset,
+  renameMidiAsset,
 } from '@/lib/storage/idb'
 import { deleteAudioBlob, writeAudioBlob } from '@/lib/storage/opfs'
-import type { AudioAsset } from '@/lib/types'
+import type { AudioAsset, MidiAsset } from '@/lib/types'
 
 /**
  * Library state: the list of recorded / imported audio assets.
@@ -18,23 +22,24 @@ import type { AudioAsset } from '@/lib/types'
 
 interface AssetState {
   assets: AudioAsset[]
+  midiAssets: MidiAsset[]
   loaded: boolean
   load: () => Promise<void>
-  /**
-   * Persist a freshly recorded asset: encode WAV to OPFS, save metadata to
-   * IDB, prepend to in-memory list.
-   */
   addRecording: (params: { asset: AudioAsset; wavBlob: Blob }) => Promise<void>
   rename: (id: string, name: string) => Promise<void>
   remove: (id: string) => Promise<void>
+  addMidi: (asset: MidiAsset) => Promise<void>
+  renameMidi: (id: string, name: string) => Promise<void>
+  removeMidi: (id: string) => Promise<void>
 }
 
 export const useAssetStore = create<AssetState>((set) => ({
   assets: [],
+  midiAssets: [],
   loaded: false,
   load: async () => {
-    const assets = await listAudioAssets()
-    set({ assets, loaded: true })
+    const [assets, midiAssets] = await Promise.all([listAudioAssets(), listMidiAssets()])
+    set({ assets, midiAssets, loaded: true })
   },
   addRecording: async ({ asset, wavBlob }) => {
     await writeAudioBlob(asset.id, wavBlob)
@@ -51,5 +56,20 @@ export const useAssetStore = create<AssetState>((set) => ({
     await deleteAudioBlob(id)
     await deleteAudioAssetRecord(id)
     set((s) => ({ assets: s.assets.filter((a) => a.id !== id) }))
+  },
+
+  addMidi: async (asset) => {
+    await putMidiAsset(asset)
+    set((s) => ({ midiAssets: [asset, ...s.midiAssets] }))
+  },
+  renameMidi: async (id, name) => {
+    await renameMidiAsset(id, name)
+    set((s) => ({
+      midiAssets: s.midiAssets.map((a) => (a.id === id ? { ...a, name } : a)),
+    }))
+  },
+  removeMidi: async (id) => {
+    await idbDeleteMidiAsset(id)
+    set((s) => ({ midiAssets: s.midiAssets.filter((a) => a.id !== id) }))
   },
 }))

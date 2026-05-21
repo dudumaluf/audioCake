@@ -32,44 +32,79 @@ export interface AudioAsset {
 }
 
 /**
- * A timeline track. Phase 2 introduces audio tracks only; Phase 5 adds
- * `kind: 'midi'`. Default project ships with four audio tracks pre-named
- * for the Roland gear (see project-store).
+ * A timeline track. Two kinds: audio (plays back recorded WAVs) and MIDI
+ * (plays notes through a Web MIDI output port).
+ *
+ * MIDI tracks carry their port + channel routing so each MIDI clip on the
+ * track inherits where its events go.
  */
 export interface Track {
   id: string
   name: string
-  kind: 'audio'
+  kind: 'audio' | 'midi'
   color: string
-  /** dB, applied via per-track channel. -∞ shown as -60. */
+  /** dB, applied via per-track channel (audio only — MIDI ignores). */
   gainDb: number
-  /** -1 (left) .. 1 (right). */
+  /** -1 (left) .. 1 (right) (audio only). */
   pan: number
   mute: boolean
   solo: boolean
   recordArm: boolean
+  /** MIDI-only: where to send recorded/played notes back out (optional). */
+  midiOutPortId?: string
+  midiOutChannel?: number
+  /** MIDI-only: which port + channel to record from (optional). */
+  midiInPortId?: string
+  midiInChannel?: number
 }
 
 /**
- * A clip placed on a track's timeline. Edits are non-destructive: `offset`
- * trims from the asset's start, `duration` is the visible length, and
- * `fadeIn` / `fadeOut` taper the edges. The original asset is untouched.
+ * A clip placed on a track's timeline.
+ *
+ * Audio clips reference an `AudioAsset` via `assetId`; the offset/duration
+ * trim non-destructively against the source WAV. MIDI clips reference a
+ * `MidiAsset` instead; offset is still in seconds for consistency, and
+ * notes outside the visible [offset, offset+duration] window are clipped
+ * on playback.
  */
 export interface Clip {
   id: string
   trackId: string
+  /** Discriminator: which asset table to look in. */
+  kind: 'audio' | 'midi'
+  /** AudioAsset id (kind='audio') or MidiAsset id (kind='midi'). */
   assetId: string
-  /** Seconds along the project timeline where the clip begins playing. */
   startTime: number
-  /** Seconds into the source asset that the clip starts (trim from start). */
   offset: number
-  /** Visible / playable duration in seconds. */
   duration: number
   fadeIn: number
   fadeOut: number
-  /** dB; per-clip gain trim on top of the track's gain. */
   gainDb: number
   name: string
+}
+
+/** A single MIDI note inside a MidiAsset. */
+export interface MidiNote {
+  /** Note start in seconds relative to the asset start. */
+  time: number
+  /** Note length in seconds. */
+  duration: number
+  /** 0..127 (MIDI note number). 60 = middle C. */
+  pitch: number
+  /** 0..127 (MIDI velocity). */
+  velocity: number
+}
+
+/** A recorded or imported MIDI pattern stored in IndexedDB. */
+export interface MidiAsset {
+  id: string
+  name: string
+  notes: MidiNote[]
+  /** Total length in seconds (covers the last note's end). */
+  durationSec: number
+  createdAt: number
+  /** Optional: source device label this MIDI came from. */
+  sourceDevice?: string
 }
 
 /** A loop region on the timeline (open interval if `end <= start`). */

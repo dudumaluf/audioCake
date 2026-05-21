@@ -36,6 +36,7 @@ interface ProjectState {
   setLoopRegion: (region: LoopRegion | null) => void
 
   addTrack: (partial?: Partial<Omit<Track, 'id'>>) => string
+  addMidiTrack: (partial?: Partial<Omit<Track, 'id' | 'kind'>>) => string
   removeTrack: (trackId: string) => void
   updateTrack: (trackId: string, patch: Partial<Track>) => void
 
@@ -119,6 +120,28 @@ export const useProjectStore = create<ProjectState>()(
           mute: partial?.mute ?? false,
           solo: partial?.solo ?? false,
           recordArm: partial?.recordArm ?? false,
+        }
+        set((s) => ({ tracks: [...s.tracks, track] }))
+        return id
+      },
+
+      addMidiTrack: (partial) => {
+        const id = ulid()
+        const order = get().tracks.length
+        const track: Track = {
+          id,
+          name: partial?.name ?? `MIDI ${order + 1}`,
+          kind: 'midi',
+          color: partial?.color ?? DEFAULT_TRACK_COLORS[order % DEFAULT_TRACK_COLORS.length]!,
+          gainDb: 0,
+          pan: 0,
+          mute: partial?.mute ?? false,
+          solo: partial?.solo ?? false,
+          recordArm: partial?.recordArm ?? false,
+          midiOutChannel: partial?.midiOutChannel ?? 0,
+          midiInChannel: partial?.midiInChannel ?? 0,
+          midiOutPortId: partial?.midiOutPortId,
+          midiInPortId: partial?.midiInPortId,
         }
         set((s) => ({ tracks: [...s.tracks, track] }))
         return id

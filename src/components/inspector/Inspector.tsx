@@ -3,6 +3,7 @@
 import { Sliders } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
+import { PianoRollEditor } from './PianoRollEditor'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useProjectStore } from '@/lib/state/project-store'
 import { formatTime } from '@/lib/utils/audio-math'
@@ -37,7 +38,11 @@ export function Inspector() {
             Click a clip to inspect.
           </div>
         ) : selected.length === 1 ? (
-          <SingleClipInspector clip={selected[0]!} />
+          selected[0]!.kind === 'midi' ? (
+            <SingleMidiClipInspector clip={selected[0]!} />
+          ) : (
+            <SingleClipInspector clip={selected[0]!} />
+          )
         ) : (
           <MultiClipInspector clips={selected} />
         )}
@@ -130,6 +135,38 @@ function SingleClipInspector({ clip }: { clip: Clip }) {
         step={0.1}
         onChange={(v) => updateClip(clip.id, { gainDb: v })}
       />
+    </div>
+  )
+}
+
+function SingleMidiClipInspector({ clip }: { clip: Clip }) {
+  const updateClip = useProjectStore((s) => s.updateClip)
+  return (
+    <div className="flex flex-col gap-4">
+      <Field label="Name">
+        <Input
+          value={clip.name}
+          onChange={(e) => updateClip(clip.id, { name: e.target.value })}
+          className="h-7 px-2 text-xs"
+        />
+      </Field>
+      <NumberField
+        label="Position"
+        suffix="s"
+        value={clip.startTime}
+        min={0}
+        step={0.01}
+        onChange={(v) => updateClip(clip.id, { startTime: Math.max(0, v) })}
+      />
+      <NumberField
+        label="Duration"
+        suffix="s"
+        value={clip.duration}
+        min={0.05}
+        step={0.01}
+        onChange={(v) => updateClip(clip.id, { duration: Math.max(0.05, v) })}
+      />
+      <PianoRollEditor clip={clip} />
     </div>
   )
 }

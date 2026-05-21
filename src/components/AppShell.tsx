@@ -11,6 +11,7 @@ import { usePlaybackEngine } from '@/hooks/usePlaybackEngine'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { useAutosave } from '@/hooks/useAutosave'
+import { useMidiRecorder } from '@/hooks/useMidiRecorder'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
 import { listProjects } from '@/lib/storage/idb'
@@ -28,6 +29,7 @@ export function AppShell() {
   const { play, pause, stop } = usePlaybackEngine()
   const { undo, redo } = useUndoRedo()
   useAutosave()
+  useMidiRecorder()
   useBootstrapProject()
 
   // Stable handler object so the shortcut effect doesn't re-bind every render.

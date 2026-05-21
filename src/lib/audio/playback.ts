@@ -1,6 +1,14 @@
 import * as Tone from 'tone'
-import type { Clip, Track } from '@/lib/types'
+import {
+  continueMidiClock,
+  startMidiClock,
+  stopMidiClock,
+  updateMidiClockBpm,
+} from '@/lib/midi/engine'
+import { scheduleMidiClip, type ScheduledMidiClip } from '@/lib/midi/player'
+import { getMidiAsset } from '@/lib/storage/idb'
 import { readAudioBlob } from '@/lib/storage/opfs'
+import type { Clip, MidiAsset, Track } from '@/lib/types'
 
 /**
  * Multi-track playback engine.
@@ -31,11 +39,21 @@ interface ClipPlayer {
   loadingPromise: Promise<void> | null
 }
 
+interface MidiSchedule {
+  scheduled: ScheduledMidiClip | null
+  trackId: string
+}
+
 const trackChannels = new Map<string, TrackChannel>()
 const clipPlayers = new Map<string, ClipPlayer>()
+const midiSchedules = new Map<string, MidiSchedule>()
 const decodeCache = new Map<string, AudioBuffer>()
+const midiAssetCache = new Map<string, MidiAsset>()
 let masterMeter: Tone.Meter | null = null
 let initialized = false
+/** Which MIDI port we're sending clock to (the first track that has one). */
+let activeClockPortId: string | null = null
+let activeBpm = 120
 
 function ensureInit() {
   if (initialized) return
@@ -51,6 +69,8 @@ export function getMasterMeter(): Tone.Meter | null {
 
 export function setBpm(bpm: number): void {
   Tone.getTransport().bpm.value = bpm
+  activeBpm = bpm
+  if (activeClockPortId) updateMidiClockBpm(activeClockPortId, bpm)
 }
 
 /**
@@ -96,15 +116,27 @@ export function applyTracks(tracks: Track[]): void {
 }
 
 /**
- * Reconcile the clip list with our active players: create players for new
- * clips, update playback params on existing ones, dispose dropped ones.
- * Loading is deferred to playback time to avoid disk thrash when the user
- * just drags a clip around.
+ * Reconcile the clip list with our active players / midi schedules.
+ *
+ * Audio clips get a `Tone.Player`; MIDI clips just get tracked here so we
+ * know which ones to schedule on the next `startTransport`. Both kinds
+ * are routed through the track-channel map (MIDI ignores the channel for
+ * audio output but uses the track's `midiOut*` for routing).
  */
 export function applyClips(clips: Clip[]): void {
   ensureInit()
-  const liveIds = new Set(clips.map((c) => c.id))
+  const liveAudioIds = new Set(clips.filter((c) => c.kind === 'audio').map((c) => c.id))
+  const liveMidiIds = new Set(clips.filter((c) => c.kind === 'midi').map((c) => c.id))
+
   for (const c of clips) {
+    if (c.kind === 'midi') {
+      if (!midiSchedules.has(c.id)) {
+        midiSchedules.set(c.id, { scheduled: null, trackId: c.trackId })
+      } else {
+        midiSchedules.get(c.id)!.trackId = c.trackId
+      }
+      continue
+    }
     let entry = clipPlayers.get(c.id)
     if (!entry) {
       const player = new Tone.Player({
@@ -113,7 +145,6 @@ export function applyClips(clips: Clip[]): void {
         fadeOut: c.fadeOut,
         volume: c.gainDb,
       })
-      // Route to its track's channel if present, else direct.
       const trackChannel = trackChannels.get(c.trackId)
       if (trackChannel) player.connect(trackChannel.channel)
       else player.toDestination()
@@ -124,7 +155,6 @@ export function applyClips(clips: Clip[]): void {
     entry.player.fadeOut = c.fadeOut
     entry.player.volume.value = c.gainDb
 
-    // Re-route if the clip moved to a different track.
     if (entry.trackId !== c.trackId) {
       try {
         entry.player.disconnect()
@@ -139,7 +169,7 @@ export function applyClips(clips: Clip[]): void {
   }
 
   for (const [id, entry] of clipPlayers) {
-    if (!liveIds.has(id)) {
+    if (!liveAudioIds.has(id)) {
       try {
         entry.player.disconnect()
       } catch {
@@ -147,6 +177,12 @@ export function applyClips(clips: Clip[]): void {
       }
       entry.player.dispose()
       clipPlayers.delete(id)
+    }
+  }
+  for (const [id, entry] of midiSchedules) {
+    if (!liveMidiIds.has(id)) {
+      entry.scheduled?.cancel()
+      midiSchedules.delete(id)
     }
   }
 }
@@ -174,22 +210,29 @@ async function ensureClipBuffer(clipId: string, assetId: string): Promise<AudioB
 }
 
 /**
- * Preload all clip buffers. Called once at start-of-playback so the
- * scheduler has everything ready and there's no audible gap.
+ * Preload all audio clip buffers + MIDI assets. Called once at start-of-
+ * playback so the scheduler has everything ready and there's no audible gap.
  */
 export async function preloadClips(clips: Clip[]): Promise<void> {
   await Promise.all(
     clips.map(async (c) => {
-      const entry = clipPlayers.get(c.id)
-      if (!entry) return
-      if (!entry.loadingPromise) {
-        entry.loadingPromise = ensureClipBuffer(c.id, c.assetId)
-          .then(() => undefined)
-          .catch((e) => {
-            console.error('Clip preload failed', c.id, e)
-          })
+      if (c.kind === 'audio') {
+        const entry = clipPlayers.get(c.id)
+        if (!entry) return
+        if (!entry.loadingPromise) {
+          entry.loadingPromise = ensureClipBuffer(c.id, c.assetId)
+            .then(() => undefined)
+            .catch((e) => {
+              console.error('Clip preload failed', c.id, e)
+            })
+        }
+        await entry.loadingPromise
+      } else {
+        if (!midiAssetCache.has(c.assetId)) {
+          const asset = await getMidiAsset(c.assetId)
+          if (asset) midiAssetCache.set(c.assetId, asset)
+        }
       }
-      await entry.loadingPromise
     }),
   )
 }
@@ -197,29 +240,56 @@ export async function preloadClips(clips: Clip[]): Promise<void> {
 /**
  * Schedule playback of all clips starting at the current transport time.
  * Cancels any prior scheduling first so re-calling is idempotent.
+ *
+ * Needs the `tracks` so MIDI clips know which port + channel to send to.
  */
-export function scheduleClips(clips: Clip[]): void {
+export function scheduleClips(clips: Clip[], tracks: Track[]): void {
   const transport = Tone.getTransport()
   transport.cancel(0)
+  const tracksById = new Map(tracks.map((t) => [t.id, t]))
+
   for (const c of clips) {
-    const entry = clipPlayers.get(c.id)
-    if (!entry?.buffer) continue
-    // We use Tone.Player.start at an absolute transport-relative time.
-    // Player.start(when, offset, duration) plays a slice of the buffer.
-    transport.schedule((time) => {
-      entry.player.start(time, c.offset, c.duration)
-    }, c.startTime)
+    if (c.kind === 'audio') {
+      const entry = clipPlayers.get(c.id)
+      if (!entry?.buffer) continue
+      transport.schedule((time) => {
+        entry.player.start(time, c.offset, c.duration)
+      }, c.startTime)
+    } else {
+      const sched = midiSchedules.get(c.id)
+      const asset = midiAssetCache.get(c.assetId)
+      const track = tracksById.get(c.trackId)
+      sched?.scheduled?.cancel()
+      if (!sched || !asset || !track?.midiOutPortId) {
+        if (sched) sched.scheduled = null
+        continue
+      }
+      sched.scheduled = scheduleMidiClip(c, asset, track.midiOutPortId, track.midiOutChannel ?? 0)
+    }
   }
 }
 
 /** Begin transport playback at the given offset (default: current position). */
-export async function startTransport(clips: Clip[], fromSec?: number): Promise<void> {
+export async function startTransport(
+  clips: Clip[],
+  tracks: Track[],
+  fromSec?: number,
+): Promise<void> {
   ensureInit()
-  await Tone.start() // requires user gesture upstream
+  await Tone.start()
   await preloadClips(clips)
   const transport = Tone.getTransport()
   if (fromSec !== undefined) transport.seconds = fromSec
-  scheduleClips(clips)
+  scheduleClips(clips, tracks)
+
+  // MIDI clock: pick the first MIDI track with an output port assigned.
+  const midiClockTrack = tracks.find((t) => t.kind === 'midi' && t.midiOutPortId && !t.mute)
+  if (midiClockTrack?.midiOutPortId) {
+    activeClockPortId = midiClockTrack.midiOutPortId
+    if (fromSec && fromSec > 0) continueMidiClock(activeClockPortId, activeBpm)
+    else startMidiClock(activeClockPortId, activeBpm)
+  }
+
   transport.start()
 }
 
@@ -231,6 +301,13 @@ export function pauseTransport(): void {
     } catch {
       /* */
     }
+  }
+  for (const sched of midiSchedules.values()) {
+    sched.scheduled?.cancel()
+    sched.scheduled = null
+  }
+  if (activeClockPortId) {
+    stopMidiClock()
   }
 }
 
@@ -244,6 +321,14 @@ export function stopTransport(): void {
     } catch {
       /* */
     }
+  }
+  for (const sched of midiSchedules.values()) {
+    sched.scheduled?.cancel()
+    sched.scheduled = null
+  }
+  if (activeClockPortId) {
+    stopMidiClock()
+    activeClockPortId = null
   }
 }
 

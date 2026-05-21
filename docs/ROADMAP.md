@@ -39,7 +39,7 @@ Autosave, project switcher, `.acproj` zip import/export, mix render via OfflineA
 
 **Verify**: project survives close/reopen; MP3/WAV/AAC export all play in Finder and match estimated sizes; `.acproj` round-trip works.
 
-## Phase 5 — MIDI · `planned`
+## Phase 5 — MIDI · `done` (bounce-to-audio deferred to Phase 6)
 
 Web MIDI engine, MIDI tracks, MIDI clock master (24 PPQN + start/stop/continue), MIDI recording, playback to Roland output, mini piano-roll on timeline, inspector piano-roll editor, `.mid` export, bounce-MIDI-to-audio.
 

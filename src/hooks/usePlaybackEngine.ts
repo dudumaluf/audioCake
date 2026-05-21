@@ -67,9 +67,9 @@ export function usePlaybackEngine() {
 
   return {
     play: async () => {
-      const currentClips = useProjectStore.getState().clips
+      const { clips: currentClips, tracks: currentTracks } = useProjectStore.getState()
       const startAt = useTransportStore.getState().playheadSec
-      await startTransport(currentClips, startAt)
+      await startTransport(currentClips, currentTracks, startAt)
       setPlaying(true)
     },
     pause: () => {

@@ -236,6 +236,7 @@ Live test checklist (after live recording works):
 - [x] `pnpm format` idempotent.
 
 Live test plan:
+
 - Record a few clips, drag into the timeline, hit play, export MP3 → download lands in `~/Downloads`, opens in Music.
 - Export WAV 24-bit → same.
 - Open Project menu → Save now → reload page → project is restored.
@@ -244,3 +245,58 @@ Live test plan:
 ### Next
 
 - Phase 5: Web MIDI engine, MIDI clock master, MIDI tracks, recording, piano-roll editor, `.mid` export, bounce-to-audio.
+
+---
+
+## 2026-05-21 — Phase 5 complete (minus bounce-to-audio)
+
+### Done
+
+- Types: `Track.kind` widened to `'audio' | 'midi'` plus `midiInPortId`, `midiInChannel`, `midiOutPortId`, `midiOutChannel`. `Clip.kind` added as a discriminator. New `MidiNote` and `MidiAsset` types.
+- Dexie v3 migration: added `midiAssets` table; v1 and v2 stores still in place. The plan's note about migrations table is honored by Dexie's built-in versioning.
+- `lib/midi/engine.ts`: full Web MIDI surface — port lists, statechange events, NOTE_ON/OFF sender, START/STOP/CLOCK realtime messages (24 PPQN), live BPM updates on the clock interval.
+- `hooks/useMidi.ts`: discovers ports with availability flag (Firefox returns `available: false`), uses queueMicrotask to satisfy React 19 lint.
+- `lib/midi/recorder.ts`: pairs note-on with note-off into `MidiNote`s, handles "vel 0 means note-off" per spec, closes held notes at stop.
+- `hooks/useMidiRecorder.ts`: on transport play, opens a session per armed MIDI track; on stop, saves each as a MidiAsset and auto-inserts a clip on the source track.
+- `lib/midi/player.ts`: schedules a clip's notes on Tone transport, with notes outside [offset, offset+duration] skipped. Returns a `cancel()` so we clean up on pause/stop/edit.
+- `lib/midi/file.ts`: `midiAssetToBlob` via `@tonejs/midi`.
+- Playback engine extended (`lib/audio/playback.ts`):
+  - New `midiSchedules` map mirroring `clipPlayers`.
+  - `applyClips` branches on `clip.kind` and tracks MIDI clips separately.
+  - `preloadClips` caches MidiAssets via `getMidiAsset` (also reused by scheduling).
+  - `scheduleClips(clips, tracks)` now takes the track list so MIDI clips can look up their port + channel.
+  - `startTransport(clips, tracks, fromSec?)` also starts the MIDI clock on the first MIDI track with an output port; pause/stop send STOP and cancel scheduled events.
+  - `setBpm` cascades to `updateMidiClockBpm` so external gear retunes live.
+- UI additions:
+  - `TrackHeader.tsx` rewritten with a second row for MIDI routing (IN/OUT port pickers + channel input + record-arm).
+  - `TrackLane.tsx` handles both audio and MIDI drop targets via separate dataTransfer keys.
+  - `MidiClipBlock.tsx` renders an SVG piano-roll inside the clip, auto-fitting to the visible pitch range.
+  - `Timeline.tsx` track height is now per-track; default project still ships with audio tracks. Toolbar got + Audio and + MIDI buttons.
+  - `MidiLibraryItem.tsx` + Library now has Audio / MIDI sections with section counts; MIDI items are draggable onto MIDI tracks.
+  - `PianoRollEditor.tsx` (Inspector): SVG-based, click-empty-to-add, drag-to-move, drag-edge-to-resize, velocity slider on selected note, delete with Backspace, `.mid` export button.
+- AppShell mounts `useMidiRecorder`.
+
+### Notes & decisions
+
+- **No SysEx pattern transfer**: Aira Compacts don't expose patterns over SysEx (verified during planning). So the supported flow is "play the device, capture notes, edit and re-trigger" — covered by the recorder + clock master + scheduler.
+- **MIDI clock is one port at a time**: we pick the first armed MIDI track with an output port. Multi-port clock distribution is overkill for v1.
+- **Note off via velocity 0**: handled per the MIDI spec; some controllers do this instead of sending a real 0x80 note-off.
+- **Bounce-MIDI-to-audio deferred**: this needs simultaneous playback + audio recording. We have all the pieces (playback engine, recorder, addRecording action), but plumbing them together cleanly is best done alongside Phase 6's effects work since both touch the engine. Noted in ROADMAP and CHANGELOG.
+
+### Verification
+
+- [x] `pnpm build` green.
+- [x] `pnpm lint` clean.
+- [x] `pnpm format` idempotent.
+
+Live test plan:
+- Add a MIDI track via the timeline toolbar.
+- Pick the Roland device under IN; the same (or another) device under OUT; channel 1.
+- Hit record-arm on the track; press Play.
+- Play the Roland; on stop, a new MIDI take appears in the library and a clip on the timeline.
+- Open the clip in the Inspector → edit notes in the piano-roll → press Play; the device retriggers the edited notes.
+- Click the Download icon in the piano-roll → `.mid` opens in Logic / Ableton.
+
+### Next
+
+- Phase 6: SoundTouch per-clip time-stretch + pitch-shift, per-track effects (EQ, compressor, sends), master limiter, metronome — plus the deferred bounce-MIDI-to-audio.

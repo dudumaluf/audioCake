@@ -4,6 +4,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-21 — Phase 5: MIDI
+
+### Added
+
+- `Track.kind: 'audio' | 'midi'`, `Clip.kind`, `MidiNote`, `MidiAsset` types.
+- Dexie schema v3 with `midiAssets` table.
+- Web MIDI engine: `ensureMidiAccess`, port enumeration with live `statechange` updates, `sendNoteOn/Off`, MIDI clock master (24 PPQN) with `startMidiClock` / `continueMidiClock` / `stopMidiClock` / `updateMidiClockBpm`, `subscribeInput` for incoming messages.
+- `useMidi` hook (Web MIDI port discovery with availability detection — Firefox returns `available: false`).
+- MIDI recorder: pairs note-on/off into `MidiNote` objects with relative timestamps; closes any held notes at stop.
+- `useMidiRecorder` hook auto-records from all record-armed MIDI tracks while transport plays, saves each take as a `MidiAsset`, and (by default) drops a clip on the source track.
+- MIDI player schedules note on/off events onto `Tone.getTransport()` so external synths play in sync.
+- Playback engine extended: schedules MIDI clips alongside audio, sends MIDI clock to the first armed MIDI output port, updates clock cadence when BPM changes.
+- `addMidiTrack` action; MIDI track headers expose IN / OUT port pickers + channel input + record-arm.
+- `MidiClipBlock` renders a mini SVG piano-roll on the timeline, with the same trim handles as audio clips.
+- Library now has Audio and MIDI sections; MIDI items are draggable onto MIDI tracks.
+- Inspector switches to a `PianoRollEditor` for selected MIDI clips: SVG roll with click-to-add, drag-to-move, drag-edge-to-resize, velocity slider, delete, and `.mid` export per pattern.
+- `.mid` export via `@tonejs/midi`.
+
+### Deferred to Phase 6
+
+- Bounce-MIDI-to-audio (re-records the device's response into a new audio clip; depends on simultaneous play+record pipeline).
+
 ## [0.4.0] — 2026-05-21 — Phase 4: persistence + multi-format export
 
 ### Added

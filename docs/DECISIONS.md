@@ -184,6 +184,7 @@ Format: `ADR-NNN — Title (YYYY-MM-DD) — author`
 **Decision**: Use `@audio/encode-mp3` (v1.1.1, MIT, published April 2026), which wraps `wasm-media-encoders` (LAME via WASM) with a clean `encoder.encode(chunk) → Uint8Array; encoder.flush()` API.
 
 **Trade-offs**:
+
 - MIT license, no GPL concerns.
 - ~190 KB module size (acceptable; loaded only on first MP3 export).
 - Mature underlying LAME implementation.
