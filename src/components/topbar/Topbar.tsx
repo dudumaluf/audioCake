@@ -1,26 +1,40 @@
 'use client'
 
-import { Circle, Loader2, Square } from 'lucide-react'
+import { Circle, Loader2, Pause, Play, Repeat, Square, SkipBack } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { LevelMeter } from '@/components/io/LevelMeter'
 import { DevicePicker } from '@/components/io/DevicePicker'
 import { useRecorder } from '@/hooks/useRecorder'
 import { useIOStore } from '@/lib/state/io-store'
+import { useProjectStore } from '@/lib/state/project-store'
+import { useTransportStore } from '@/lib/state/transport-store'
+import { formatBarBeat } from '@/lib/utils/time'
+import { formatTime } from '@/lib/utils/audio-math'
 import { cn } from '@/lib/utils'
 
+interface TopbarProps {
+  onPlay: () => void
+  onPause: () => void
+  onStop: () => void
+}
+
 /**
- * Topbar holds the project name, device picker, recording controls, and
- * the live input meter.
- *
- * The level meter is wired to a shared monitor stream; opening / closing
- * the stream is managed by `useRecorder` so the user only sees the meter
- * light up when their device is actually being read.
+ * Topbar holds the project label, device picker, recording controls, the
+ * transport (play/pause/stop/loop + BPM + time readout), and the live
+ * input meter.
  */
-export function Topbar() {
+export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
   const recorder = useRecorder()
   const { countIn, setCountIn } = useIOStore()
+  const bpm = useProjectStore((s) => s.bpm)
+  const setBpm = useProjectStore((s) => s.setBpm)
+  const loopEnabled = useProjectStore((s) => s.loopEnabled)
+  const setLoopEnabled = useProjectStore((s) => s.setLoopEnabled)
+  const isPlaying = useTransportStore((s) => s.isPlaying)
+  const playheadSec = useTransportStore((s) => s.playheadSec)
 
   const isRecording = recorder.state === 'recording'
   const isCountIn = recorder.state === 'count-in'
@@ -48,17 +62,91 @@ export function Topbar() {
         {isMonitoring ? 'Stop monitor' : 'Start monitor'}
       </Button>
 
-      <div className="ml-2 flex min-w-[180px] flex-1 items-center gap-3">
+      <div className="ml-1 flex min-w-[140px] flex-1 items-center gap-2">
         <LevelMeter
           peaks={recorder.levels.peaks}
           heldPeaks={recorder.levels.heldPeaks}
           orientation="horizontal"
-          segments={28}
-          className="max-w-[260px]"
+          segments={22}
+          className="max-w-[200px]"
         />
         <span className="text-muted-foreground font-mono-num text-[10px]">
           {isMonitoring ? 'LIVE' : '---'}
         </span>
+      </div>
+
+      {/* Transport cluster */}
+      <div className="bg-background/40 border-border/60 flex items-center gap-2 rounded-md border px-2 py-1">
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={onStop}
+                aria-label="Stop and return to zero"
+              >
+                <SkipBack className="size-3.5 fill-current" />
+              </Button>
+            }
+          />
+          <TooltipContent>Stop and return to zero</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon"
+                onClick={isPlaying ? onPause : onPlay}
+                className="size-8"
+                aria-label={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? (
+                  <Pause className="size-4 fill-current" />
+                ) : (
+                  <Play className="size-4 fill-current" />
+                )}
+              </Button>
+            }
+          />
+          <TooltipContent>{isPlaying ? 'Pause (Space)' : 'Play (Space)'}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant={loopEnabled ? 'secondary' : 'ghost'}
+                size="icon"
+                className="size-7"
+                onClick={() => setLoopEnabled(!loopEnabled)}
+                aria-label="Loop"
+              >
+                <Repeat className="size-3.5" />
+              </Button>
+            }
+          />
+          <TooltipContent>Loop region (L)</TooltipContent>
+        </Tooltip>
+        <div className="bg-border/80 mx-1 h-5 w-px" />
+        <div className="flex items-center gap-1">
+          <span className="text-muted-foreground text-[10px] tracking-wider uppercase">BPM</span>
+          <Input
+            type="number"
+            value={bpm}
+            min={20}
+            max={300}
+            onChange={(e) => setBpm(Number.parseFloat(e.target.value) || bpm)}
+            className="h-6 w-14 px-1 text-center text-xs"
+          />
+        </div>
+        <div className="bg-border/80 mx-1 h-5 w-px" />
+        <div className="font-mono-num flex flex-col items-end leading-tight">
+          <span className="text-foreground text-[11px]">{formatTime(playheadSec)}</span>
+          <span className="text-muted-foreground text-[9px]">
+            {formatBarBeat(playheadSec, bpm)}
+          </span>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">

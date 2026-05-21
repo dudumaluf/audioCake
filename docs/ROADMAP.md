@@ -21,7 +21,7 @@ App shell, dark theme tokens, fonts, audio input device picker, recording + mete
 
 **Verify**: plug Roland → see in picker → record → see waveform in library → preview → reload → assets persist; disconnect/reconnect handled; crash mid-record offers recovery.
 
-## Phase 2 — Timeline + arrangement · `planned`
+## Phase 2 — Timeline + arrangement · `done`
 
 Multi-track timeline with bars/beats ruler and snap-to-grid, drag-asset-to-track creates clips, WaveSurfer waveforms per clip, Tone.Transport master clock, per-track gain/pan/mute/solo, transport controls, playhead, master output meter.
 

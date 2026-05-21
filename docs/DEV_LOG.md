@@ -101,3 +101,58 @@ Manual checks performed:
 ### Next
 
 - Phase 2: real multi-track timeline + Tone.js engine + arrangement.
+
+---
+
+## 2026-05-21 — Phase 2 complete
+
+### Done
+
+- Added `Track`, `Clip`, `LoopRegion`, `SnapResolution` types in `lib/types.ts`. Non-destructive: offset/duration/fadeIn/fadeOut/gainDb all live on the clip.
+- `lib/state/project-store.ts`: tracks, clips, BPM (clamped 20–300), snap (default 1/16), pxPerSec (default 80), loop region, selection. Default project ships with 4 audio tracks pre-named for the Roland gear (Drums T-8, Bass J-6, Lead S-1, Pad) in 4 brand colors.
+- `lib/state/transport-store.ts`: playing/recording flags + playheadSec, separate so it can stay outside Phase 3's undo history.
+- `lib/utils/time.ts`: `secPerBeat`, `secPerBar`, `snapSeconds`, `snapTime`, `formatBarBeat` (1-indexed bar.beat.tick).
+- `lib/audio/playback.ts` — the meat of Phase 2:
+  - Singleton track-channel + clip-player maps; lazy AudioBuffer decode per asset.
+  - `applyTracks(tracks)` reconciles: creates/updates/disposes channels in place. Solo logic mutes non-solo'd tracks when any track is solo'd.
+  - `applyClips(clips)` reconciles: creates/updates/disposes players, re-routes when a clip moves between tracks.
+  - `preloadClips` + `scheduleClips` + `startTransport(clips, fromSec?)`: idempotent re-schedule (cancels prior schedule), Tone.start() on first call, then `transport.start()`.
+  - Master `Tone.Meter` exposed via `getMasterMeter()` for the UI.
+- `hooks/usePlaybackEngine.ts`: mounts at the top of AppShell, mirrors tracks/clips/bpm/loop into the engine via `useEffect`, drives playhead via rAF only while playing. Returns `play / pause / stop` actions.
+- Timeline UI:
+  - `Ruler.tsx`: bar marks + numbers + beat marks, BPM-driven.
+  - `TrackHeader.tsx`: color chip, editable name input, M/S buttons + delete (visible on hover).
+  - `TrackLane.tsx`: drop target for library drags (`application/x-audiocake-asset`), renders all clips on that track. Background click clears selection.
+  - `ClipBlock.tsx`: absolutely-positioned, draggable horizontally (pointer-capture + snap), shows the asset's peaks sliced to its visible window via `MiniWaveform` with `mix-blend-overlay` so it tints onto the track color.
+  - `Timeline.tsx`: toolbar (snap selector, zoom −/+, +Track button), then horizontal split: fixed-width track-header column on the left, scrollable lanes on the right (ruler + lanes share the horizontal scroll), playhead overlay on top.
+- Mixer UI:
+  - `ChannelStrip.tsx`: pan slider (with C/L/R label), vertical gain fader (-60..+6 dB), M/S buttons.
+  - `Mixer.tsx`: horizontal strip of channels + master vertical meter on the far right driven by `Tone.Meter.getValue()` polled at 60 Hz.
+- Topbar rebuilt: transport cluster (skip-to-zero, play/pause, loop, BPM input, time + bar.beat readout). DevicePicker, monitor button, input meter, count-in toggle, record/stop button all preserved.
+- Library items made draggable (HTML5 `dataTransfer` with the asset id).
+- AppShell now mounts `usePlaybackEngine` once at the top and passes `onPlay/onPause/onStop` into the Topbar.
+
+### Notes & surprises
+
+- **react-resizable-panels v4** uses `orientation` / `id` (not `direction` / `autoSaveId`). Caught in Phase 1.
+- **Base UI Slider** signature: pass scalar `value` and you get a scalar `onValueChange`; pass an array and you get an array. Used scalar throughout for simplicity.
+- **Tone Meter constructor** key is `channelCount` (not `channels`). The `Meter` instance exposes `channels` as a readonly accessor for the internal channel count.
+- **Selection clearing**: the lane's background `onClick` was getting clicks bubbled from clip drags, which made dragging always clear selection. Stopped propagation in `ClipBlock` pointerdown and only clear when `target.dataset.role !== 'clip-body'`.
+- **Player.start signature** `(when, offset, duration)` is what made non-destructive trimming free: just pass `clip.offset` and `clip.duration` and the engine handles the rest.
+
+### Verification
+
+- [x] `pnpm build` green.
+- [x] `pnpm lint` clean.
+- [x] `pnpm format` idempotent.
+- [x] `pnpm dev` serves HTTP 200; timeline + mixer visible with 4 default tracks.
+- [ ] Live test once user drags clips and plays back. Plan checklist:
+  - Record three takes (Phase 1 still works).
+  - Drag each into one of the default tracks; each snaps to the grid.
+  - Play; hear all three layered. Pan / gain / mute / solo behave as expected.
+  - Loop toggle + Cmd-drag (bypass snap) work.
+  - BPM input recomputes the grid live.
+
+### Next
+
+- Phase 3: editing (trim + fade handles, split, duplicate, delete, undo/redo, BPM control wired to keymap, full keyboard shortcuts).

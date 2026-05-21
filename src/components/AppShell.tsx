@@ -6,16 +6,28 @@ import { Library } from '@/components/library/Library'
 import { Mixer } from '@/components/mixer/Mixer'
 import { Timeline } from '@/components/timeline/Timeline'
 import { Topbar } from '@/components/topbar/Topbar'
+import { usePlaybackEngine } from '@/hooks/usePlaybackEngine'
 
 /**
  * Top-level app layout: topbar across the top, then three resizable columns
  * (library / center / inspector) with a resizable mixer pinned to the
  * bottom of the center column.
+ *
+ * Owns the playback engine lifecycle (mounted once, drives all of
+ * `projectStore` → engine reconciliation).
  */
 export function AppShell() {
+  const { play, pause, stop } = usePlaybackEngine()
+
   return (
     <div className="bg-background flex h-full flex-col">
-      <Topbar />
+      <Topbar
+        onPlay={() => {
+          void play()
+        }}
+        onPause={pause}
+        onStop={stop}
+      />
       <div className="min-h-0 flex-1">
         <ResizablePanelGroup orientation="horizontal" id="audiocake:cols">
           <ResizablePanel defaultSize={20} minSize={14} maxSize={35}>

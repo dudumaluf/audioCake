@@ -77,6 +77,11 @@ export function LibraryItem({ asset }: { asset: AudioAsset }) {
   return (
     <>
       <div
+        draggable
+        onDragStart={(e) => {
+          e.dataTransfer.effectAllowed = 'copy'
+          e.dataTransfer.setData('application/x-audiocake-asset', asset.id)
+        }}
         className={cn(
           'group border-border/60 hover:bg-foreground/[0.04] flex flex-col gap-1.5 rounded-md border p-2 transition-colors',
           isPlaying && 'border-primary/50 bg-primary/[0.04]',
