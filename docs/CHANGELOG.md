@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.6] — 2026-05-21 — UX: clearer loop region
+
+### Changed
+
+- Loop region now stays visible on the ruler even when the loop toggle is off (dimmer styling) so users can re-enable the existing region instead of redragging from scratch.
+- Added a small × clear button on the loop region that removes the region and disables the loop in one click.
+
 ## [1.0.5] — 2026-05-21 — Hotfix: Record button pushed off-screen
 
 ### Fixed

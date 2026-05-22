@@ -1,9 +1,11 @@
 'use client'
 
+import { X } from 'lucide-react'
 import { useMemo, useRef } from 'react'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
 import { snapTime, secPerBar } from '@/lib/utils/time'
+import { cn } from '@/lib/utils'
 
 interface RulerProps {
   pxPerSec: number
@@ -90,14 +92,33 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
           </div>
         )
       })}
-      {loopRegion && loopEnabled && (
+      {loopRegion && (
         <div
-          className="bg-primary/30 border-primary pointer-events-none absolute top-0 bottom-0 border-x"
+          className={cn(
+            'group/loop pointer-events-none absolute top-0 bottom-0 border-x',
+            loopEnabled
+              ? 'border-primary bg-primary/30'
+              : 'border-muted-foreground/40 bg-muted-foreground/10',
+          )}
           style={{
             left: loopRegion.start * pxPerSec,
             width: (loopRegion.end - loopRegion.start) * pxPerSec,
           }}
-        />
+        >
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              setLoopRegion(null)
+              setLoopEnabled(false)
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label="Clear loop region"
+            title="Clear loop region"
+            className="bg-background/80 hover:bg-background border-border text-foreground pointer-events-auto absolute top-0.5 right-0.5 flex size-3.5 items-center justify-center rounded-sm border"
+          >
+            <X className="size-2.5" />
+          </button>
+        </div>
       )}
     </div>
   )
