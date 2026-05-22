@@ -39,9 +39,14 @@ export function usePlaybackEngine() {
   const setPlayhead = useTransportStore((s) => s.setPlayhead)
   const setPlaying = useTransportStore((s) => s.setPlaying)
 
-  // Track / clip / bpm reconciliation.
+  // Track / clip / bpm reconciliation. We re-apply clips after tracks too
+  // so any clip that fell back to master (because its track-channel didn't
+  // exist yet — happens at bootstrap when loadProjectData replaces the
+  // whole project state in one go) gets re-routed through the proper
+  // channel as soon as it exists.
   useEffect(() => {
     applyTracks(tracks)
+    applyClips(useProjectStore.getState().clips)
   }, [tracks])
 
   useEffect(() => {

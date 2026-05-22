@@ -50,6 +50,12 @@ interface ClipPlayer {
   loadingPromise: Promise<void> | null
   /** Inserted between player and track when stretch / pitch != neutral. */
   stretchNode: SoundTouchNode | null
+  /**
+   * True if the last `rewireClipRouting` call fell back to Tone.getDestination()
+   * because the track-channel didn't exist at that moment. Used to force a
+   * re-route on the next applyClips run once the channel materialises.
+   */
+  routedToFallback?: boolean
 }
 
 interface MidiSchedule {
@@ -344,7 +350,17 @@ function rewireClipRouting(
 ): void {
   const movedTrack = entry.trackId !== trackId
   const hadStretch = !!entry.stretchNode
-  if (!movedTrack && hadStretch === needsStretch) {
+  // Also re-route if last time we routed there was no matching track-channel
+  // (we fell through to Tone.getDestination()) and now one exists. This
+  // handles the bootstrap race where applyClips can run before applyTracks
+  // has created the channels for a freshly-loaded project — without this
+  // re-check, clips would stay wired direct to the master and the per-track
+  // mute/solo/gain/pan would silently do nothing.
+  const trackChannel = trackChannels.get(trackId)
+  const wasRoutedToMasterFallback = entry.routedToFallback === true
+  const channelNowAvailable = !!trackChannel
+  const needsRerouteForChannel = wasRoutedToMasterFallback && channelNowAvailable
+  if (!movedTrack && hadStretch === needsStretch && !needsRerouteForChannel) {
     if (entry.stretchNode)
       applyStretchParams(entry.stretchNode, { timeStretch: params.ts, pitchSemitones: params.ps })
     return
@@ -364,10 +380,10 @@ function rewireClipRouting(
     entry.stretchNode = null
   }
 
-  const trackChannel = trackChannels.get(trackId)
   // Route into the track's EQ (start of the per-track chain), not directly
   // to the channel — otherwise we bypass EQ + compressor.
   const target = (trackChannel?.eq ?? Tone.getDestination()) as Tone.InputNode
+  entry.routedToFallback = !trackChannel
 
   if (needsStretch) {
     try {

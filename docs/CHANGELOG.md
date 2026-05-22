@@ -4,6 +4,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-05-21 — Fix: mixer controls had no effect on audio
+
+### Fixed
+
+- Mute / solo / gain / pan / EQ / sends in the mixer pane didn't actually change what you heard for clips on tracks loaded from a saved project. Root cause: a bootstrap race where `applyClips` ran before `applyTracks` had created the track-channels for the freshly-loaded project ids; `rewireClipRouting` then fell back to `Tone.getDestination()` and the clip stayed wired direct to the master output, bypassing the channel forever. Two fixes:
+  - `ClipPlayer` now remembers if it was routed to the fallback master, and forces a re-route on the next `applyClips` once the proper channel exists.
+  - `usePlaybackEngine` re-runs `applyClips` whenever tracks change so any newly-created channels can pick up their clips immediately.
+
 ## [1.4.1] — 2026-05-21 — Mixer channel strip rewrite
 
 ### Fixed
