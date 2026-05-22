@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.3] — 2026-05-21 — Hotfix: panel sizes were in pixels, not percent
+
+### Fixed
+
+- The Library, Inspector, and Mixer panes were actually only 20–30 *pixels* wide. `react-resizable-panels` v4 changed its `defaultSize` semantics: a bare `number` is now interpreted as raw CSS pixels (it gets piped straight into `flexBasis: <number>` which CSS reads as px), not a percentage. Switched every `defaultSize`/`minSize`/`maxSize` in `AppShell` to percentage strings (`"20%"` etc.) — now the layout is actually 20% / 56% / 24% with the mixer at 30% of the center column.
+- Removed the now-unnecessary `min-h-0 min-w-0 overflow-hidden` from the `ResizablePanel` wrapper — the primitive already injects `min-width: 0` and `min-height: 0` inline, and `overflow: hidden` was fighting it.
+
 ## [1.0.2] — 2026-05-21 — Hotfix: panel layout sizing
 
 ### Fixed

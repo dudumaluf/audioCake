@@ -105,24 +105,27 @@ export function AppShell() {
         onStop={stop}
       />
       <div className="min-h-0 flex-1">
+        {/* react-resizable-panels v4 treats numeric `defaultSize` as raw CSS px
+            (because internally it sets `flexBasis: defaultSize` with no unit).
+            We want proportional layout, so pass percentage strings. */}
         <ResizablePanelGroup orientation="horizontal" id="audiocake:cols">
-          <ResizablePanel defaultSize={20} minSize={14} maxSize={35}>
+          <ResizablePanel defaultSize="20%" minSize="14%" maxSize="35%">
             <Library />
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={56} minSize={30}>
+          <ResizablePanel defaultSize="56%" minSize="30%">
             <ResizablePanelGroup orientation="vertical" id="audiocake:center">
-              <ResizablePanel defaultSize={70} minSize={30}>
+              <ResizablePanel defaultSize="70%" minSize="30%">
                 <Timeline />
               </ResizablePanel>
               <ResizableHandle />
-              <ResizablePanel defaultSize={30} minSize={14}>
+              <ResizablePanel defaultSize="30%" minSize="14%">
                 <Mixer />
               </ResizablePanel>
             </ResizablePanelGroup>
           </ResizablePanel>
           <ResizableHandle />
-          <ResizablePanel defaultSize={24} minSize={16} maxSize={40}>
+          <ResizablePanel defaultSize="24%" minSize="16%" maxSize="40%">
             <Inspector />
           </ResizablePanel>
         </ResizablePanelGroup>

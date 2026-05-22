@@ -424,3 +424,18 @@ Future selectors that need to derive shape from store state should: (a) select t
 ### Lesson recorded
 
 Anything you drop into a flexbox layout (which `react-resizable-panels` is, under the hood) needs `min-width: 0` and `min-height: 0` on the flex item if the children can exceed the slot's natural size. The default `min-width: auto` is the classic flexbox foot-gun.
+
+---
+
+## 2026-05-21 — v1.0.3 hotfix: panel sizes were pixels, not percent
+
+### Done
+
+- 1.0.2 didn't actually solve the squashing — turning `overflow-hidden` on the wrapper was beside the point. Inspected the rendered HTML and discovered the panels had `flex-basis: 20px`, `flex-basis: 24px`, `flex-basis: 56px`. **The library treats a bare numeric `defaultSize` as raw CSS pixels** (it sets `flexBasis: <value>` inline; CSS reads numbers without units as px).
+- `react-resizable-panels` v3 used to treat numbers as percentages (out of 100). v4 changed the convention to CSS-spec-faithful values — see their type `defaultSize?: number | string`. To get proportional sizing you must pass a string with a unit, e.g. `"20%"`.
+- Fixed by switching every `defaultSize` / `minSize` / `maxSize` in `AppShell` from `{20}` to `"20%"` etc.
+- Removed the now-unnecessary `min-h-0 min-w-0 overflow-hidden` from `ResizablePanel` — the primitive already injects those inline, and `overflow: hidden` was just creating noise. Wrapper is back to a clean pass-through.
+
+### Lesson recorded
+
+When a third-party React component takes a `number | string` prop for sizing, **never assume numbers are percentages** — modern libraries default to CSS-spec semantics (numbers = pixels). Always check the rendered inline style in the browser DOM inspector when sizing looks wrong; it tells you the exact computed value the library applied.
