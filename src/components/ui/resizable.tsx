@@ -14,8 +14,19 @@ function ResizablePanelGroup({ className, ...props }: ResizablePrimitive.GroupPr
   )
 }
 
-function ResizablePanel({ ...props }: ResizablePrimitive.PanelProps) {
-  return <ResizablePrimitive.Panel data-slot="resizable-panel" {...props} />
+function ResizablePanel({ className, ...props }: ResizablePrimitive.PanelProps) {
+  // `min-w-0 min-h-0` defeats flexbox's `auto` minimum so the panel honours
+  // the configured size instead of being inflated by its content's natural
+  // width — without this a wide child (mixer strips, etc.) pushes the panel
+  // past its share and squashes its siblings. `overflow-hidden` keeps
+  // children visually clipped to the slot.
+  return (
+    <ResizablePrimitive.Panel
+      data-slot="resizable-panel"
+      className={cn('min-h-0 min-w-0 overflow-hidden', className)}
+      {...props}
+    />
+  )
 }
 
 function ResizableHandle({

@@ -61,7 +61,7 @@ export function Timeline() {
   const lanesScrollRef = useRef<HTMLDivElement>(null)
 
   return (
-    <div className="bg-background flex h-full flex-col">
+    <div className="bg-background flex h-full w-full flex-col">
       <div className="border-border/60 flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <Layers className="text-muted-foreground size-4" />
         <span className="text-sm font-medium">Timeline</span>

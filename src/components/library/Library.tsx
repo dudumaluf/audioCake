@@ -46,7 +46,7 @@ export function Library() {
   return (
     <aside
       className={cn(
-        'bg-panel/40 flex h-full flex-col',
+        'bg-panel/40 flex h-full w-full flex-col',
         dragOver && 'ring-primary ring-2 ring-inset',
       )}
       onDragOver={(e) => {

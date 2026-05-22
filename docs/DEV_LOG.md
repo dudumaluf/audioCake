@@ -410,3 +410,17 @@ Total LoC outside `node_modules`, `.next`, and the soundtouch processor bundle: 
 ### Lesson recorded
 
 Future selectors that need to derive shape from store state should: (a) select the raw store field, (b) shape it with `useMemo`. Never `.filter` / `.map` / object-literal inside the selector body.
+
+---
+
+## 2026-05-21 — v1.0.2 hotfix: panel layout sizing
+
+### Done
+
+- The Library and Inspector side panels were collapsing to ~20 px wide strips, vertically wrapping every character of their text. Cause: `react-resizable-panels` v4 lays each `<Panel>` out as a flex item but doesn't override flexbox's `min-width: auto` default. Inner content (mixer strips, inspector inputs, library upload row) measured wider than the assigned 20% / 24% share and pushed the panel past its slot, squashing the siblings to single-character widths.
+- Fix in `components/ui/resizable.tsx`: the `ResizablePanel` wrapper now applies `min-h-0 min-w-0 overflow-hidden` so children honour the configured size and are clipped to the slot.
+- Added `w-full` to the four pane root elements (Library, Inspector, Timeline, Mixer) so they fill their resized panel.
+
+### Lesson recorded
+
+Anything you drop into a flexbox layout (which `react-resizable-panels` is, under the hood) needs `min-width: 0` and `min-height: 0` on the flex item if the children can exceed the slot's natural size. The default `min-width: auto` is the classic flexbox foot-gun.

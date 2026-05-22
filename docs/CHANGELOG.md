@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.2] — 2026-05-21 — Hotfix: panel layout sizing
+
+### Fixed
+
+- Library and Inspector side panels were collapsing to single-character-wide strips because the shadcn `ResizablePanel` wrapper didn't enforce `min-w-0` / `min-h-0` on its flex item. Flexbox's default `min-width: auto` meant any wide inner content (mixer strips, inspector inputs) pushed the panel past its assigned share and squashed siblings. Wrapper now clamps both axes and applies `overflow-hidden`; the four pane root elements (Library, Inspector, Timeline, Mixer) all set `h-full w-full` so they fully fill their slot.
+
 ## [1.0.1] — 2026-05-21 — Hotfix: TrackLane snapshot stability
 
 ### Fixed

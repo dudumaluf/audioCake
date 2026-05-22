@@ -22,7 +22,7 @@ export function Inspector() {
   const selected = clips.filter((c) => selectedIds.includes(c.id))
 
   return (
-    <aside className="bg-panel/40 flex h-full flex-col">
+    <aside className="bg-panel/40 flex h-full w-full flex-col">
       <div className="border-border/60 flex h-10 shrink-0 items-center gap-2 border-b px-3">
         <Sliders className="text-muted-foreground size-4" />
         <span className="text-sm font-medium">Inspector</span>
