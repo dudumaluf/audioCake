@@ -57,29 +57,74 @@ export async function renderAndExport(
   }
   const lengthFrames = Math.ceil(lengthSec * sampleRate)
 
-  const ctx = new OfflineAudioContext({
+  // We use Tone in the offline context too so the live engine's effects
+  // (EQ, compressor, limiter, reverb/delay returns) can be reused without
+  // re-implementing each one in raw Web Audio. setContext swaps Tone's
+  // global context to the offline one for the duration of this render.
+  const Tone = await import('tone')
+  const previousCtx = Tone.getContext()
+  const offlineCtx = new OfflineAudioContext({
     numberOfChannels: 2,
     length: lengthFrames,
     sampleRate,
   })
+  Tone.setContext(offlineCtx as unknown as Parameters<typeof Tone.setContext>[0])
 
   // Register SoundTouch in the offline context (no-op if any clip has
   // neutral stretch / pitch; cheap if some do).
-  await registerSoundTouch(ctx)
+  await registerSoundTouch(offlineCtx)
+  const ctx: BaseAudioContext = offlineCtx
+
+  // Master chain: limiter feeding directly to offline destination.
+  const masterLimiter = new Tone.Limiter(-0.3)
+  masterLimiter.toDestination()
+
+  // Global FX returns.
+  const reverb = new Tone.Reverb({ decay: 2.4, wet: 1 })
+  const delay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.35, wet: 1 })
+  reverb.connect(masterLimiter)
+  delay.connect(masterLimiter)
 
   // Solo logic mirrors the live engine.
   const anySoloed = tracks.some((t) => t.solo)
-  const trackNodes = new Map<string, GainNode>()
+  const trackNodes = new Map<string, AudioNode>()
   for (const t of tracks) {
-    const gain = ctx.createGain()
-    gain.gain.value = dbToLinear(t.gainDb)
-    const panner = ctx.createStereoPanner()
-    panner.pan.value = Math.max(-1, Math.min(1, t.pan))
-    const mute = ctx.createGain()
-    const effectiveMute = anySoloed ? !t.solo : t.mute
-    mute.gain.value = effectiveMute ? 0 : 1
-    gain.connect(panner).connect(mute).connect(ctx.destination)
-    trackNodes.set(t.id, gain)
+    const channel = new Tone.Channel({
+      volume: t.gainDb,
+      pan: t.pan,
+      mute: anySoloed ? !t.solo : t.mute,
+    })
+    const eq = new Tone.EQ3({
+      low: t.eq?.low ?? 0,
+      mid: t.eq?.mid ?? 0,
+      high: t.eq?.high ?? 0,
+    })
+    const compressor = new Tone.Compressor({
+      threshold: t.compressor?.thresholdDb ?? -18,
+      ratio: t.compressor?.enabled ? (t.compressor.ratio ?? 2) : 1,
+      attack: 0.01,
+      release: 0.1,
+    })
+    eq.chain(compressor, channel)
+    channel.connect(masterLimiter)
+
+    // Sends.
+    const reverbDb = t.reverbSendDb ?? -60
+    const delayDb = t.delaySendDb ?? -60
+    if (reverbDb > -60) {
+      const reverbSend = new Tone.Gain(Math.pow(10, reverbDb / 20))
+      channel.connect(reverbSend)
+      reverbSend.connect(reverb)
+    }
+    if (delayDb > -60) {
+      const delaySend = new Tone.Gain(Math.pow(10, delayDb / 20))
+      channel.connect(delaySend)
+      delaySend.connect(delay)
+    }
+
+    // Use the EQ's native input as the track-input node so per-clip
+    // signal flows through the full chain.
+    trackNodes.set(t.id, eq.input as unknown as AudioNode)
   }
 
   // Auto-crossfade overlapping same-track clips so adjacent audio is
@@ -146,7 +191,14 @@ export async function renderAndExport(
   // OfflineAudioContext doesn't natively report rendering progress, so we
   // emit two coarse stages: render-start, render-done.
   onProgress?.(0.05, 'render')
-  const rendered = await ctx.startRendering()
+  let rendered: AudioBuffer
+  try {
+    rendered = await offlineCtx.startRendering()
+  } finally {
+    // Always restore Tone's main-thread context so subsequent live
+    // playback isn't pointing at the disposed offline context.
+    Tone.setContext(previousCtx)
+  }
   onProgress?.(0.65, 'render')
 
   // Extract de-interleaved channels for the encoder.

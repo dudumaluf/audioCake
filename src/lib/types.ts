@@ -54,6 +54,10 @@ export interface Track {
   eq?: { low: number; mid: number; high: number }
   /** Audio-only: simple compressor. */
   compressor?: { thresholdDb: number; ratio: number; enabled: boolean }
+  /** Audio-only: send to the global reverb return, in dB. -60 = off. */
+  reverbSendDb?: number
+  /** Audio-only: send to the global delay return, in dB. -60 = off. */
+  delaySendDb?: number
   /** MIDI-only: where to send recorded/played notes back out (optional). */
   midiOutPortId?: string
   midiOutChannel?: number

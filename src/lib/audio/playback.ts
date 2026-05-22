@@ -33,6 +33,10 @@ interface TrackChannel {
   channel: Tone.Channel
   eq: Tone.EQ3
   compressor: Tone.Compressor
+  /** Send to the global reverb return. */
+  reverbSend: Tone.Gain
+  /** Send to the global delay return. */
+  delaySend: Tone.Gain
   /** Last applied solo state across all tracks (recomputed each apply). */
   effectiveMute: boolean
 }
@@ -65,6 +69,8 @@ let activeClockPortId: string | null = null
 let activeBpm = 120
 
 let masterLimiter: Tone.Limiter | null = null
+let masterReverb: Tone.Reverb | null = null
+let masterDelay: Tone.FeedbackDelay | null = null
 let metronomeSynth: Tone.MembraneSynth | null = null
 let metronomeEventId: number | null = null
 let metronomeEnabled = false
@@ -77,6 +83,14 @@ function ensureInit() {
   masterLimiter = new Tone.Limiter(-0.3)
   masterMeter = new Tone.Meter({ channelCount: 2, normalRange: true })
   masterLimiter.chain(masterMeter, Tone.getDestination())
+
+  // Global FX returns. Tracks send into these via gain nodes; the returns
+  // mix into the master limiter so wet signal still respects the ceiling.
+  masterReverb = new Tone.Reverb({ decay: 2.4, wet: 1 })
+  masterDelay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.35, wet: 1 })
+  masterReverb.connect(masterLimiter)
+  masterDelay.connect(masterLimiter)
+
   initialized = true
 }
 
@@ -171,10 +185,22 @@ export function applyTracks(tracks: Track[]): void {
         attack: 0.01,
         release: 0.1,
       })
-      // Per-track signal flow: incoming → EQ → Compressor → Channel (gain/pan/mute) → master limiter
+      // Per-track signal flow:
+      //   incoming → EQ → Compressor → Channel (gain/pan/mute) → master limiter
+      //                                         ↘︎ reverbSend → masterReverb → limiter
+      //                                         ↘︎ delaySend  → masterDelay  → limiter
+      // Sends tap post-channel so mute/solo still silences them.
       eq.chain(compressor, channel)
       channel.connect(masterInput())
-      entry = { channel, eq, compressor, effectiveMute: t.mute }
+
+      const reverbSend = new Tone.Gain(0)
+      const delaySend = new Tone.Gain(0)
+      channel.connect(reverbSend)
+      channel.connect(delaySend)
+      if (masterReverb) reverbSend.connect(masterReverb)
+      if (masterDelay) delaySend.connect(masterDelay)
+
+      entry = { channel, eq, compressor, reverbSend, delaySend, effectiveMute: t.mute }
       trackChannels.set(t.id, entry)
     }
     entry.channel.volume.value = t.gainDb
@@ -194,6 +220,12 @@ export function applyTracks(tracks: Track[]): void {
       entry.compressor.threshold.value = t.compressor.thresholdDb
       entry.compressor.ratio.value = t.compressor.enabled ? t.compressor.ratio : 1
     }
+
+    // Sends: -60 dB or lower = off (0 linear); above maps to linear gain.
+    const reverbDb = t.reverbSendDb ?? -60
+    const delayDb = t.delaySendDb ?? -60
+    entry.reverbSend.gain.value = reverbDb <= -60 ? 0 : Math.pow(10, reverbDb / 20)
+    entry.delaySend.gain.value = delayDb <= -60 ? 0 : Math.pow(10, delayDb / 20)
   }
 
   for (const [id, entry] of trackChannels) {
@@ -202,12 +234,16 @@ export function applyTracks(tracks: Track[]): void {
         entry.channel.disconnect()
         entry.eq.disconnect()
         entry.compressor.disconnect()
+        entry.reverbSend.disconnect()
+        entry.delaySend.disconnect()
       } catch {
         /* */
       }
       entry.channel.dispose()
       entry.eq.dispose()
       entry.compressor.dispose()
+      entry.reverbSend.dispose()
+      entry.delaySend.dispose()
       trackChannels.delete(id)
     }
   }

@@ -46,6 +46,19 @@ export function ChannelStrip({ track }: { track: Track }) {
             />
           </div>
 
+          <div className="w-full shrink-0">
+            <SendBand
+              label="REV"
+              value={track.reverbSendDb ?? -60}
+              onChange={(v) => updateTrack(track.id, { reverbSendDb: v })}
+            />
+            <SendBand
+              label="DLY"
+              value={track.delaySendDb ?? -60}
+              onChange={(v) => updateTrack(track.id, { delaySendDb: v })}
+            />
+          </div>
+
           <div className="flex min-h-0 w-full flex-1 flex-col items-center">
             <div className="text-muted-foreground text-[9px] tracking-wider uppercase">Gain</div>
             <div className="flex min-h-0 w-full flex-1 items-center justify-center py-0.5">
@@ -142,6 +155,40 @@ function EqBand({
       />
       <span className="text-muted-foreground font-mono-num text-[9px]">
         {value === 0 ? '0' : value > 0 ? `+${value.toFixed(1)}` : value.toFixed(1)}
+      </span>
+    </div>
+  )
+}
+
+/** Send slider: -60 dB = off, 0 dB = unity. Tinted differently from EQ. */
+function SendBand({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: number
+  onChange: (v: number) => void
+}) {
+  return (
+    <div className="mb-1 flex flex-col items-center gap-0.5">
+      <span className="text-monitor text-[8px] tracking-wider uppercase">{label}</span>
+      <Slider
+        min={-60}
+        max={6}
+        step={0.5}
+        value={value}
+        onValueChange={(v) => onChange(scalarFromSlider(v))}
+        className="w-full"
+      />
+      <span className="text-muted-foreground font-mono-num text-[9px]">
+        {value <= -60
+          ? 'off'
+          : value === 0
+            ? '0'
+            : value > 0
+              ? `+${value.toFixed(0)}`
+              : value.toFixed(0)}
       </span>
     </div>
   )

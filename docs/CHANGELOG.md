@@ -4,6 +4,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-05-21 — Reverb + delay sends ("now it sounds like a record")
+
+### Added
+
+- Global reverb (`Tone.Reverb`, 2.4 s decay) and delay (`Tone.FeedbackDelay`, 3/8 dotted, 35% feedback) returns sit at the master bus, before the limiter so wet signal still respects -0.3 dBFS.
+- Per-track `reverbSendDb` and `delaySendDb` (-60 = off, 0 = unity, +6 max). Tap post-channel so mute/solo silences the wet path too.
+- Mixer channel strip now has compact REV / DLY send sliders next to the EQ bands. Teal tint to distinguish from EQ.
+- Multi-format export builds the full effects chain offline (was previously a bare gain→pan→destination): every export now includes EQ, compressor, sends, limiter — what you hear is what you export.
+
+### Note
+
+- Reverb / delay parameters (decay, feedback, delay time) are fixed for v1. A "FX settings" panel is roadmap work — most users get 80% of the value from "turn it up / down" on the send.
+
 ## [1.2.0] — 2026-05-21 — Bounce MIDI to audio + auto-crossfades
 
 ### Added
