@@ -4,11 +4,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-05-21 — Loop region playback actually loops + click-to-audition on the ruler
+
+### Fixed
+
+- Setting a loop region and pressing Play didn't actually loop within the region. `transport.schedule()` events are one-shot — they don't refire when the transport jumps back from loopEnd to loopStart. `scheduleClips` now branches on `transport.loop`: when looping, each audio clip that overlaps the loop window is scheduled via `transport.scheduleRepeat()` at the loop length, with offsets/durations clamped to the region. Plus a final scheduleRepeat at loopEnd stops every active player so notes don't bleed across the seam.
+- `usePlaybackEngine` now re-runs scheduling when the loop region or clip list changes during playback, so new clips and loop adjustments take effect on the next iteration.
+
+### Added
+
+- Click the ruler to seek + briefly audition (250 ms preview) whatever audio sits at that position. Lets you navigate the arrangement aurally without firing the transport. Hold Shift while clicking for a silent seek (old behaviour).
+
 ## [1.0.9] — 2026-05-21 — Fix: starting playback mid-clip produced silence
 
 ### Fixed
 
-- If you seeked the playhead to a position inside an existing clip (by clicking the ruler) and hit Play, the clip wouldn't sound. `scheduleClips` was using `Tone.getTransport().schedule(callback, clip.startTime)` to start each player, but Tone's transport silently skips scheduled events whose time has already passed — so any clip starting earlier than the current playhead was a no-op. Now detects when the playhead is *inside* a clip's playable window and immediately starts the player with a partial offset, so playback from mid-clip works as you'd expect.
+- If you seeked the playhead to a position inside an existing clip (by clicking the ruler) and hit Play, the clip wouldn't sound. `scheduleClips` was using `Tone.getTransport().schedule(callback, clip.startTime)` to start each player, but Tone's transport silently skips scheduled events whose time has already passed — so any clip starting earlier than the current playhead was a no-op. Now detects when the playhead is _inside_ a clip's playable window and immediately starts the player with a partial offset, so playback from mid-clip works as you'd expect.
 
 ### Note
 

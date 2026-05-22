@@ -6,6 +6,7 @@ import {
   applyTracks,
   getTransportTime,
   pauseTransport,
+  rescheduleNow,
   setBpm,
   setLoop,
   setMetronomeEnabled,
@@ -53,7 +54,22 @@ export function usePlaybackEngine() {
 
   useEffect(() => {
     setLoop(loopEnabled, loopRegion?.start ?? 0, loopRegion?.end ?? 0)
+    // If transport is mid-flight, re-run scheduling so the next iteration
+    // honours the new loop window (or the lack of one).
+    if (useTransportStore.getState().isPlaying) {
+      const { clips: cs, tracks: ts } = useProjectStore.getState()
+      rescheduleNow(cs, ts)
+    }
   }, [loopEnabled, loopRegion])
+
+  // Re-schedule when clips change during playback so newly-added clips
+  // and edits inside the loop region take effect on the next iteration.
+  useEffect(() => {
+    if (useTransportStore.getState().isPlaying) {
+      const { tracks: ts } = useProjectStore.getState()
+      rescheduleNow(clips, ts)
+    }
+  }, [clips])
 
   const metronomeOnPlay = useIOStore((s) => s.metronomeOnPlay)
   useEffect(() => {

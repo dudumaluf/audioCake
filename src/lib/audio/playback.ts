@@ -435,14 +435,31 @@ export async function preloadClips(clips: Clip[]): Promise<void> {
  *
  * Needs the `tracks` so MIDI clips know which port + channel to send to.
  */
+/**
+ * (Re)schedule every clip onto Tone.Transport.
+ *
+ * Behaviour modes:
+ *   - No loop active: each clip gets one transport.schedule() at its
+ *     startTime; a clip the playhead is currently inside is also started
+ *     immediately with a partial offset.
+ *   - Loop active: clips that overlap the loop region are scheduled with
+ *     transport.scheduleRepeat() at the loop length so they re-trigger
+ *     on every iteration. We also schedule a stop at loop-end so a clip
+ *     that extends past loop-end doesn't keep ringing across the seam.
+ *
+ * `tracks` is needed so MIDI clips can resolve their output port + channel.
+ */
 export function scheduleClips(clips: Clip[], tracks: Track[]): void {
   const transport = Tone.getTransport()
   transport.cancel(0)
   const tracksById = new Map(tracks.map((t) => [t.id, t]))
-  // Account for the stretched length of audio clips so a stretched clip
-  // that visually ends at startTime+duration but actually plays for
-  // duration/timeStretch seconds is still "playing now" when checked.
   const transportSec = transport.seconds
+  const lookahead = Tone.getContext().lookAhead
+
+  const looping = transport.loop
+  const loopStart = looping ? Number(transport.loopStart) : 0
+  const loopEnd = looping ? Number(transport.loopEnd) : Infinity
+  const loopLen = looping ? loopEnd - loopStart : 0
 
   for (const c of clips) {
     if (c.kind === 'audio') {
@@ -454,30 +471,71 @@ export function scheduleClips(clips: Clip[], tracks: Track[]): void {
       const clipStart = c.startTime
       const clipEnd = c.startTime + stretchedDur
 
-      if (transportSec >= clipEnd) {
-        // Whole clip is already in the past; nothing to schedule.
+      if (looping && loopLen > 0) {
+        // Skip clips that don't overlap the loop window at all.
+        if (clipEnd <= loopStart || clipStart >= loopEnd) continue
+
+        // For each loop iteration, start the player at the clip's
+        // offset into the loop. If the clip starts before the loop, we
+        // jump into the middle of the source.
+        const effectiveClipStart = Math.max(clipStart, loopStart)
+        const offsetIntoLoop = effectiveClipStart - loopStart
+        const playedAtLoopBoundary = (effectiveClipStart - clipStart) * ts
+        const sourceOffset = c.offset + playedAtLoopBoundary
+        const cappedEnd = Math.min(clipEnd, loopEnd)
+        const playDuration = (cappedEnd - effectiveClipStart) * ts
+
+        if (playDuration > 0.001) {
+          // Fire on every iteration via scheduleRepeat. The interval is the
+          // loop length; the start time within the iteration is the clip's
+          // offset from loop start.
+          transport.scheduleRepeat(
+            (time) => {
+              try {
+                if (entry.player.state === 'started') entry.player.stop(time)
+                entry.player.start(time, sourceOffset, playDuration)
+              } catch {
+                /* underrun or already-stopped race */
+              }
+            },
+            loopLen,
+            offsetIntoLoop,
+          )
+        }
+
+        // If the playhead is already inside this clip when scheduling,
+        // start it immediately for the remainder of this iteration.
+        if (transportSec > clipStart && transportSec < cappedEnd && transportSec < loopEnd) {
+          const playedAlready = (transportSec - clipStart) * ts
+          const remaining = Math.min(
+            playDuration - (transportSec - effectiveClipStart) * ts,
+            (cappedEnd - transportSec) * ts,
+          )
+          if (remaining > 0.001) {
+            entry.player.start(`+${lookahead}`, c.offset + playedAlready, remaining)
+          }
+        }
         continue
       }
 
+      // ---- Non-looping path ----
+      if (transportSec >= clipEnd) continue
+
       if (transportSec > clipStart && transportSec < clipEnd) {
-        // Playhead is *inside* the clip — start the player immediately
-        // with a partial offset so we hear the clip from the current
-        // playhead position. `transport.schedule(callback, t)` doesn't
-        // fire for `t` already in the past, which is why scheduling
-        // alone produced silence when starting from mid-clip.
-        const playedAlready = transportSec - clipStart
-        const sourceOffset = c.offset + playedAlready * ts
-        const remainingSource = c.duration - playedAlready * ts
-        if (remainingSource > 0.001) {
-          // Use Tone's lookahead so the start is sample-accurate even
-          // when called from the main thread.
-          const startAt = `+${Tone.getContext().lookAhead}`
-          entry.player.start(startAt, sourceOffset, remainingSource)
+        // Playhead inside clip — start immediately with a partial offset.
+        const playedAlready = (transportSec - clipStart) * ts
+        const remaining = c.duration - playedAlready
+        if (remaining > 0.001) {
+          entry.player.start(`+${lookahead}`, c.offset + playedAlready, remaining)
         }
       } else {
-        // Future start — normal scheduling.
+        // Future start — schedule normally.
         transport.schedule((time) => {
-          entry.player.start(time, c.offset, c.duration)
+          try {
+            entry.player.start(time, c.offset, c.duration)
+          } catch {
+            /* */
+          }
         }, clipStart)
       }
     } else {
@@ -490,6 +548,89 @@ export function scheduleClips(clips: Clip[], tracks: Track[]): void {
         continue
       }
       sched.scheduled = scheduleMidiClip(c, asset, track.midiOutPortId, track.midiOutChannel ?? 0)
+    }
+  }
+
+  // Stop every audio player at loop end so notes don't bleed across the seam.
+  if (looping && loopLen > 0) {
+    transport.scheduleRepeat(
+      (time) => {
+        for (const { player } of clipPlayers.values()) {
+          try {
+            if (player.state === 'started') player.stop(time)
+          } catch {
+            /* */
+          }
+        }
+      },
+      loopLen,
+      loopEnd - 0.005, // a tick before the boundary
+    )
+  }
+}
+
+/**
+ * Re-run scheduling using the current transport state. Used by the React
+ * bridge when the loop region or loop-enabled flag changes while playing,
+ * so the next iteration honours the new bounds.
+ */
+export function rescheduleNow(clips: Clip[], tracks: Track[]): void {
+  scheduleClips(clips, tracks)
+}
+
+/**
+ * One-shot "audition" of whatever audio sits at a given timeline position.
+ *
+ * Plays ~250 ms of every audio clip that overlaps the position, with the
+ * correct source offset. Used by the ruler so clicking around the
+ * arrangement gives instant aural feedback (no need to start the
+ * transport). Skipped if the transport is already running.
+ */
+const AUDITION_SEC = 0.25
+const auditionPlayers = new Set<Tone.Player>()
+
+export async function auditionAt(clips: Clip[], timeSec: number): Promise<void> {
+  ensureInit()
+  await Tone.start()
+  await ensureSoundTouchRegistered()
+  if (Tone.getTransport().state === 'started') return
+
+  // Make sure relevant clip buffers are loaded.
+  const relevant = clips.filter((c) => {
+    if (c.kind !== 'audio') return false
+    const ts = c.timeStretch ?? 1
+    const stretchedDur = c.duration / ts
+    return timeSec >= c.startTime && timeSec < c.startTime + stretchedDur
+  })
+  if (relevant.length === 0) return
+
+  await preloadClips(relevant)
+
+  // Stop any in-flight audition first so quick clicks don't pile up.
+  for (const p of auditionPlayers) {
+    try {
+      if (p.state === 'started') p.stop()
+    } catch {
+      /* */
+    }
+  }
+  auditionPlayers.clear()
+
+  const ctx = Tone.getContext()
+  const now = ctx.currentTime + ctx.lookAhead
+  for (const c of relevant) {
+    const entry = clipPlayers.get(c.id)
+    if (!entry?.buffer) continue
+    const ts = c.timeStretch ?? 1
+    const playedAlready = (timeSec - c.startTime) * ts
+    const sourceOffset = c.offset + playedAlready
+    const dur = Math.min(AUDITION_SEC, c.duration - playedAlready)
+    if (dur <= 0.01) continue
+    try {
+      entry.player.start(now, sourceOffset, dur)
+      auditionPlayers.add(entry.player)
+    } catch {
+      /* */
     }
   }
 }

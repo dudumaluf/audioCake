@@ -2,6 +2,7 @@
 
 import { X } from 'lucide-react'
 import { useMemo, useRef } from 'react'
+import { auditionAt } from '@/lib/audio/playback'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
 import { snapTime, secPerBar } from '@/lib/utils/time'
@@ -53,6 +54,13 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
         dragStartRef.current = { pointerX: e.clientX, rectLeft: rect.left, time: t }
         dragMovedRef.current = false
         setPlayhead(t)
+        // Audition: fire a brief click of whatever's at this point unless
+        // the user holds Shift (silent seek). Skipped if transport is
+        // already running — `auditionAt` itself no-ops in that case.
+        if (!e.shiftKey) {
+          const { clips } = useProjectStore.getState()
+          void auditionAt(clips, t)
+        }
       }}
       onPointerMove={(e) => {
         const drag = dragStartRef.current
