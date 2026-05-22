@@ -85,11 +85,18 @@ export function TrackLane({ track, height, pxPerSec, bpm }: TrackLaneProps) {
   }
 
   const onBackgroundClick = (e: React.MouseEvent) => {
-    // Click on empty lane = clear selection; clicks bubbling from clips
-    // are stopped by ClipBlock so we won't get here.
-    if ((e.target as HTMLElement).dataset.role !== 'clip-body') {
-      selectClips([])
+    // Click on empty lane = clear selection. Skip when the click came
+    // from a clip (the outer `data-role="clip"` div) or its inner body —
+    // those bubble through pointer-events even though we stop pointer-down
+    // propagation, so without this check selecting a clip would
+    // immediately clear itself on mouse-up.
+    let el: HTMLElement | null = e.target as HTMLElement
+    while (el && el !== e.currentTarget) {
+      const role = el.dataset.role
+      if (role === 'clip' || role === 'clip-body') return
+      el = el.parentElement
     }
+    selectClips([])
   }
 
   return (

@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.7] — 2026-05-21 — Fix: clip selection cleared on mouse-up
+
+### Fixed
+
+- Inspector was disappearing the moment you released a clip click because the bubbled `click` event hit `TrackLane`'s background handler, which then cleared the selection. The handler only checked `target.dataset.role !== 'clip-body'`, but the actual click target is the outer `data-role="clip"` element (or one of its inner SVG/handle children), not `clip-body`. Walks up the DOM looking for either role and bails out cleanly instead.
+
 ## [1.0.6] — 2026-05-21 — UX: clearer loop region
 
 ### Changed
