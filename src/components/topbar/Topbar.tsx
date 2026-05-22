@@ -47,40 +47,44 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
   const [exportOpen, setExportOpen] = useState(false)
 
   return (
-    <header className="border-border bg-panel/60 flex h-14 shrink-0 items-center gap-3 border-b px-3 backdrop-blur">
-      <div className="flex items-center gap-2 pr-1">
+    <header className="border-border bg-panel/60 flex h-14 w-full shrink-0 items-center gap-3 overflow-hidden border-b px-3 backdrop-blur">
+      <div className="flex shrink-0 items-center gap-2 pr-1">
         <div className="bg-primary size-3 rounded-sm" />
         <ProjectSwitcher />
       </div>
 
-      <div className="bg-border/80 h-6 w-px" />
+      <div className="bg-border/80 h-6 w-px shrink-0" />
 
-      <DevicePicker />
+      <div className="flex min-w-0 shrink items-center gap-2">
+        <DevicePicker />
+        <Button
+          variant={isMonitoring ? 'secondary' : 'outline'}
+          size="sm"
+          className="shrink-0"
+          onClick={() => (isMonitoring ? recorder.stopMonitor() : recorder.startMonitor())}
+          disabled={!recorder.selectedInputId || isRecording || isSaving}
+        >
+          {isMonitoring ? 'Stop monitor' : 'Start monitor'}
+        </Button>
+      </div>
 
-      <Button
-        variant={isMonitoring ? 'secondary' : 'outline'}
-        size="sm"
-        onClick={() => (isMonitoring ? recorder.stopMonitor() : recorder.startMonitor())}
-        disabled={!recorder.selectedInputId || isRecording || isSaving}
-      >
-        {isMonitoring ? 'Stop monitor' : 'Start monitor'}
-      </Button>
-
-      <div className="ml-1 flex min-w-[140px] flex-1 items-center gap-2">
+      {/* Meter is the elastic zone: shrinks first when the topbar gets tight,
+          so transport + record controls always stay visible. */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         <LevelMeter
           peaks={recorder.levels.peaks}
           heldPeaks={recorder.levels.heldPeaks}
           orientation="horizontal"
           segments={22}
-          className="max-w-[200px]"
+          className="max-w-[200px] min-w-0"
         />
-        <span className="text-muted-foreground font-mono-num text-[10px]">
+        <span className="text-muted-foreground font-mono-num shrink-0 text-[10px]">
           {isMonitoring ? 'LIVE' : '---'}
         </span>
       </div>
 
-      {/* Transport cluster */}
-      <div className="bg-background/40 border-border/60 flex items-center gap-2 rounded-md border px-2 py-1">
+      {/* Transport cluster — always full size */}
+      <div className="bg-background/40 border-border/60 flex shrink-0 items-center gap-2 rounded-md border px-2 py-1">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -154,7 +158,7 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -164,7 +168,7 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
                   onCheckedChange={setCountIn}
                   aria-label="1-bar count-in"
                 />
-                <span className="text-muted-foreground">Count-in</span>
+                <span className="text-muted-foreground hidden xl:inline">Count-in</span>
               </label>
             }
           />
@@ -180,7 +184,7 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
                   onCheckedChange={setMetronomeOnPlay}
                   aria-label="Metronome on play"
                 />
-                <span className="text-muted-foreground">Click</span>
+                <span className="text-muted-foreground hidden xl:inline">Click</span>
               </label>
             }
           />

@@ -72,8 +72,8 @@ export function DevicePicker() {
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <Mic className="text-muted-foreground size-4" />
+    <div className="flex min-w-0 items-center gap-2">
+      <Mic className="text-muted-foreground size-4 shrink-0" />
       <Select
         value={selectedInputId ?? undefined}
         onValueChange={(id) => {
@@ -81,8 +81,13 @@ export function DevicePicker() {
           if (d) setSelectedInput(d.deviceId, d.label)
         }}
       >
-        <SelectTrigger size="sm" className="min-w-[220px]">
-          <SelectValue placeholder="Select audio input" />
+        {/* Cap the trigger width so a long unlabeled device-id (which browsers
+            return before mic permission is granted) doesn't push the topbar's
+            right-side controls off-screen. */}
+        <SelectTrigger size="sm" className="w-[200px] max-w-[200px] min-w-0">
+          <span className="block truncate text-left">
+            <SelectValue placeholder="Select audio input" />
+          </span>
         </SelectTrigger>
         <SelectContent>
           {devices.map((d) => (

@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.5] — 2026-05-21 — Hotfix: Record button pushed off-screen
+
+### Fixed
+
+- On narrower viewports (≤ ~1280px) the Record and Export buttons were getting clipped off the right edge of the topbar. Two causes: (1) the DevicePicker's SelectTrigger had `min-w-[220px]` but no max-width, so when the browser returned an unlabeled device (a 64-character device-id hash, which happens before mic permission is granted) the trigger grew to ~500px and pushed everything past it off-screen; (2) the topbar lacked `overflow-hidden` and stable shrink semantics, so anything that overflowed simply disappeared.
+- DevicePicker SelectTrigger now `w-[200px] max-w-[200px]` with the inner value truncated. The full label is still visible in the dropdown options.
+- Topbar layout reorganised into three zones: a left "always-visible" cluster (project + device), an elastic meter zone in the middle (shrinks first), and a right "always-visible" cluster (transport + count-in + click + Record + Export). The recording/transport controls are now `shrink-0` so they're never clipped.
+- Count-in / Click labels collapse to icon-only on viewports < 1280px; the switches stay always tappable.
+
 ## [1.0.4] — 2026-05-21 — Hotfix: mixer channel strip overflow
 
 ### Fixed
