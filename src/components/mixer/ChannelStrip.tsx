@@ -18,15 +18,17 @@ export function ChannelStrip({ track }: { track: Track }) {
   const isMidi = track.kind === 'midi'
 
   return (
-    <div className="border-border/60 bg-panel/30 flex h-full w-24 shrink-0 flex-col items-center gap-2 border-r p-2">
-      <div className="size-2.5 shrink-0 rounded-[2px]" style={{ background: track.color }} />
-      <div className="w-full truncate text-center text-[11px]" title={track.name}>
-        {track.name}
+    <div className="border-border/60 bg-panel/30 flex h-full w-24 shrink-0 flex-col items-center gap-1 overflow-hidden border-r px-2 py-1.5">
+      <div className="flex w-full shrink-0 items-center gap-1">
+        <div className="size-2.5 shrink-0 rounded-[2px]" style={{ background: track.color }} />
+        <div className="min-w-0 flex-1 truncate text-[11px]" title={track.name}>
+          {track.name}
+        </div>
       </div>
 
       {!isMidi && (
         <>
-          <div className="w-full">
+          <div className="w-full shrink-0">
             <EqBand
               label="HI"
               value={eq.high}
@@ -44,30 +46,9 @@ export function ChannelStrip({ track }: { track: Track }) {
             />
           </div>
 
-          <div className="w-full">
-            <div className="text-muted-foreground text-center text-[9px] tracking-wider uppercase">
-              Pan
-            </div>
-            <Slider
-              min={-1}
-              max={1}
-              step={0.01}
-              value={track.pan}
-              onValueChange={(v) => updateTrack(track.id, { pan: scalarFromSlider(v) })}
-              className="mt-1 w-full"
-            />
-            <div className="text-muted-foreground mt-0.5 text-center text-[9px]">
-              {track.pan === 0
-                ? 'C'
-                : track.pan > 0
-                  ? `R${Math.round(track.pan * 100)}`
-                  : `L${Math.round(-track.pan * 100)}`}
-            </div>
-          </div>
-
-          <div className="flex w-full flex-1 flex-col items-center">
+          <div className="flex min-h-0 w-full flex-1 flex-col items-center">
             <div className="text-muted-foreground text-[9px] tracking-wider uppercase">Gain</div>
-            <div className="flex h-full w-full items-center justify-center">
+            <div className="flex min-h-0 w-full flex-1 items-center justify-center py-0.5">
               <Slider
                 min={-60}
                 max={6}
@@ -78,15 +59,34 @@ export function ChannelStrip({ track }: { track: Track }) {
                 className="h-full"
               />
             </div>
-            <div className="text-muted-foreground font-mono-num mt-1 text-[10px]">
+            <div className="text-muted-foreground font-mono-num text-[9px]">
               {track.gainDb <= -60 ? '-∞' : `${track.gainDb.toFixed(1)} dB`}
+            </div>
+          </div>
+
+          <div className="w-full shrink-0">
+            <Slider
+              min={-1}
+              max={1}
+              step={0.01}
+              value={track.pan}
+              onValueChange={(v) => updateTrack(track.id, { pan: scalarFromSlider(v) })}
+              className="w-full"
+            />
+            <div className="text-muted-foreground text-center text-[9px]">
+              PAN{' '}
+              {track.pan === 0
+                ? 'C'
+                : track.pan > 0
+                  ? `R${Math.round(track.pan * 100)}`
+                  : `L${Math.round(-track.pan * 100)}`}
             </div>
           </div>
         </>
       )}
       {isMidi && <div className="text-muted-foreground my-auto text-center text-[10px]">MIDI</div>}
 
-      <div className="flex w-full justify-center gap-1">
+      <div className="flex w-full shrink-0 justify-center gap-1">
         <button
           onClick={() => updateTrack(track.id, { mute: !track.mute })}
           className={cn(

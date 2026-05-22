@@ -115,11 +115,11 @@ export function AppShell() {
           <ResizableHandle />
           <ResizablePanel defaultSize="56%" minSize="30%">
             <ResizablePanelGroup orientation="vertical" id="audiocake:center">
-              <ResizablePanel defaultSize="70%" minSize="30%">
+              <ResizablePanel defaultSize="62%" minSize="30%">
                 <Timeline />
               </ResizablePanel>
               <ResizableHandle />
-              <ResizablePanel defaultSize="30%" minSize="14%">
+              <ResizablePanel defaultSize="38%" minSize="20%">
                 <Mixer />
               </ResizablePanel>
             </ResizablePanelGroup>
