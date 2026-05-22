@@ -4,6 +4,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-05-21 — Tighter loop playback + draggable playhead + cleaner ruler gestures
+
+### Fixed
+
+- Loop iterations sometimes started late, dropped audio, or sounded quiet on the seam. Two culprits: (1) we were calling `Player.stop(time)` followed by `Player.start(time)` at the same audio-context time, which races with Tone's internal source teardown; (2) a global "stop everything at loop-end" scheduleRepeat ran 5 ms before loop-end and stepped on the next iteration's start. Both removed — `Player.start(time, offset, duration)` already handles re-trigger cleanly without an explicit stop.
+
+### Changed
+
+- Ruler interactions clarified:
+  - **Click ruler** = seek + briefly audition (unchanged).
+  - **Cmd-click ruler** = silent seek (no audition).
+  - **Shift-drag ruler** = set loop region (was: any drag created a loop). This prevents accidental loop creation when you're trying to navigate.
+
+### Added
+
+- **Draggable playhead** — the diamond on top of the playhead line is now grabbable. Drag it to scrub through the arrangement; brief audition snippets fire at ~120 ms intervals so you hear what you're passing over.
+
 ## [1.3.0] — 2026-05-21 — Reverb + delay sends ("now it sounds like a record")
 
 ### Added

@@ -46,18 +46,22 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
   return (
     <div
       className="bg-panel/60 border-border/60 relative h-7 cursor-text border-b select-none"
+      title="Click to seek (Cmd-click: silent seek). Shift+drag to set loop region."
       onPointerDown={(e) => {
         if (e.button !== 0) return
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
         const t = timeFromEvent(e, rect.left)
-        ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-        dragStartRef.current = { pointerX: e.clientX, rectLeft: rect.left, time: t }
-        dragMovedRef.current = false
+        // Shift = "set loop region" gesture: capture the pointer and start
+        // a drag session that will write the loop bounds on move. Plain
+        // click = seek (+ audition); Cmd+click = silent seek.
+        if (e.shiftKey) {
+          ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+          dragStartRef.current = { pointerX: e.clientX, rectLeft: rect.left, time: t }
+          dragMovedRef.current = false
+          return
+        }
         setPlayhead(t)
-        // Audition: fire a brief click of whatever's at this point unless
-        // the user holds Shift (silent seek). Skipped if transport is
-        // already running — `auditionAt` itself no-ops in that case.
-        if (!e.shiftKey) {
+        if (!(e.metaKey || e.ctrlKey)) {
           const { clips } = useProjectStore.getState()
           void auditionAt(clips, t)
         }

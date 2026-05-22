@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Ruler } from './Ruler'
 import { TrackHeader } from './TrackHeader'
 import { TrackLane } from './TrackLane'
+import { auditionAt } from '@/lib/audio/playback'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
 import type { SnapResolution, Track } from '@/lib/types'
@@ -163,6 +164,13 @@ export function Timeline() {
   )
 }
 
+/**
+ * Playhead overlay. The 1-px line itself stays pointer-events-none so it
+ * never blocks clicks on clips beneath it. The little diamond on top is
+ * pointer-events: auto and draggable for scrubbing — drag releases short
+ * audition slices at each cursor position so you hear what you're moving
+ * over.
+ */
 function Playhead({
   pxPerSec,
   playheadSec,
@@ -172,12 +180,49 @@ function Playhead({
   playheadSec: number
   heightPx: number
 }) {
+  const setPlayhead = useTransportStore((s) => s.setPlayhead)
+  const dragRef = useRef<{ rectLeft: number; lastAudition: number } | null>(null)
+
   return (
     <div
       className="bg-primary/90 pointer-events-none absolute top-0 w-px"
       style={{ left: playheadSec * pxPerSec, height: heightPx }}
     >
-      <div className="bg-primary absolute -top-1 -left-1 size-2 rotate-45 rounded-[1px]" />
+      <div
+        title="Drag to scrub the playhead"
+        className="bg-primary pointer-events-auto absolute -top-1 -left-2 size-4 rotate-45 cursor-ew-resize rounded-[1px]"
+        onPointerDown={(e) => {
+          e.stopPropagation()
+          if (e.button !== 0) return
+          // The diamond is positioned inside the lanes scroll container.
+          // We can derive the lane left edge by reading the playhead's own
+          // parent's bounding box and subtracting `playheadSec * pxPerSec`.
+          const playheadEl = e.currentTarget.parentElement
+          if (!playheadEl) return
+          const rect = playheadEl.getBoundingClientRect()
+          const laneLeft = rect.left - playheadSec * pxPerSec
+          dragRef.current = { rectLeft: laneLeft, lastAudition: 0 }
+          ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+        }}
+        onPointerMove={(e) => {
+          const drag = dragRef.current
+          if (!drag) return
+          const t = Math.max(0, (e.clientX - drag.rectLeft) / pxPerSec)
+          setPlayhead(t)
+          // Throttle auditions so we fire ~one every 120 ms while dragging.
+          const now = performance.now()
+          if (now - drag.lastAudition > 120) {
+            drag.lastAudition = now
+            const { clips } = useProjectStore.getState()
+            void auditionAt(clips, t)
+          }
+        }}
+        onPointerUp={(e) => {
+          if (!dragRef.current) return
+          ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+          dragRef.current = null
+        }}
+      />
     </div>
   )
 }

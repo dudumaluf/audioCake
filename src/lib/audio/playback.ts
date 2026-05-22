@@ -527,14 +527,17 @@ export function scheduleClips(clips: Clip[], tracks: Track[]): void {
         if (playDuration > 0.001) {
           // Fire on every iteration via scheduleRepeat. The interval is the
           // loop length; the start time within the iteration is the clip's
-          // offset from loop start.
+          // offset from loop start. Tone.Player.start() internally cancels
+          // any in-flight source for this player and ramps the envelope
+          // cleanly from `time` — no manual stop() call required, which
+          // avoids the stop-followed-by-start race that caused the
+          // late / quiet start on some loop iterations.
           transport.scheduleRepeat(
             (time) => {
               try {
-                if (entry.player.state === 'started') entry.player.stop(time)
                 entry.player.start(time, sourceOffset, playDuration)
               } catch {
-                /* underrun or already-stopped race */
+                /* race against a concurrent disposal — safe to ignore */
               }
             },
             loopLen,
@@ -590,22 +593,12 @@ export function scheduleClips(clips: Clip[], tracks: Track[]): void {
     }
   }
 
-  // Stop every audio player at loop end so notes don't bleed across the seam.
-  if (looping && loopLen > 0) {
-    transport.scheduleRepeat(
-      (time) => {
-        for (const { player } of clipPlayers.values()) {
-          try {
-            if (player.state === 'started') player.stop(time)
-          } catch {
-            /* */
-          }
-        }
-      },
-      loopLen,
-      loopEnd - 0.005, // a tick before the boundary
-    )
-  }
+  // No global "stop everything at loop end" scheduler — each clip's
+  // start(time, offset, duration) call already constrains the player to
+  // its slice, and Tone.Player.start() internally cancels any prior
+  // source for that player when re-triggered. The previous global stop
+  // raced with the per-clip restart and produced the late / quiet start
+  // we used to see on the loop boundary.
 }
 
 /**
