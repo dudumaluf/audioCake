@@ -1,3 +1,4 @@
+import { computeAutoCrossfades, effectiveFades } from './crossfades'
 import { encodeMp3 } from './encoders/mp3'
 import { encodeWebCodecs } from './encoders/webcodecs'
 import { createSoundTouchNode, registerSoundTouch } from './soundtouch'
@@ -81,6 +82,10 @@ export async function renderAndExport(
     trackNodes.set(t.id, gain)
   }
 
+  // Auto-crossfade overlapping same-track clips so adjacent audio is
+  // joined cleanly instead of stacking through the overlap.
+  const auto = computeAutoCrossfades(audioClips)
+
   // Decode each clip's asset (cache per asset id + reverse flag) and schedule it.
   const assetCache = new Map<string, AudioBuffer>()
   for (const c of audioClips) {
@@ -109,15 +114,16 @@ export async function renderAndExport(
     source.buffer = buffer
     source.playbackRate.value = ts
 
+    const fades = effectiveFades(c, auto)
     const clipGain = ctx.createGain()
     clipGain.gain.value = dbToLinear(c.gainDb)
-    if (c.fadeIn > 0) {
-      const fadeIn = Math.min(c.fadeIn, stretchedDur)
+    if (fades.fadeIn > 0) {
+      const fadeIn = Math.min(fades.fadeIn, stretchedDur)
       clipGain.gain.setValueAtTime(0, c.startTime)
       clipGain.gain.linearRampToValueAtTime(dbToLinear(c.gainDb), c.startTime + fadeIn)
     }
-    if (c.fadeOut > 0) {
-      const fadeOut = Math.min(c.fadeOut, stretchedDur)
+    if (fades.fadeOut > 0) {
+      const fadeOut = Math.min(fades.fadeOut, stretchedDur)
       const fadeStart = c.startTime + stretchedDur - fadeOut
       clipGain.gain.setValueAtTime(dbToLinear(c.gainDb), Math.max(0, fadeStart))
       clipGain.gain.linearRampToValueAtTime(0, c.startTime + stretchedDur)

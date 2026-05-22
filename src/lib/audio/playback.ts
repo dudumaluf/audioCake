@@ -9,6 +9,7 @@ import {
 import { scheduleMidiClip, type ScheduledMidiClip } from '@/lib/midi/player'
 import { getMidiAsset } from '@/lib/storage/idb'
 import { readAudioBlob } from '@/lib/storage/opfs'
+import { computeAutoCrossfades, effectiveFades } from './crossfades'
 import { applyStretchParams, createSoundTouchNode, registerSoundTouch } from './soundtouch'
 import type { Clip, MidiAsset, Track } from '@/lib/types'
 
@@ -224,6 +225,7 @@ export function applyClips(clips: Clip[]): void {
   ensureInit()
   const liveAudioIds = new Set(clips.filter((c) => c.kind === 'audio').map((c) => c.id))
   const liveMidiIds = new Set(clips.filter((c) => c.kind === 'midi').map((c) => c.id))
+  const auto = computeAutoCrossfades(clips)
 
   for (const c of clips) {
     if (c.kind === 'midi') {
@@ -253,8 +255,9 @@ export function applyClips(clips: Clip[]): void {
       }
       clipPlayers.set(c.id, entry)
     }
-    entry.player.fadeIn = c.fadeIn
-    entry.player.fadeOut = c.fadeOut
+    const fades = effectiveFades(c, auto)
+    entry.player.fadeIn = fades.fadeIn
+    entry.player.fadeOut = fades.fadeOut
     entry.player.volume.value = c.gainDb
 
     // Match the player's playbackRate to the requested stretch so the

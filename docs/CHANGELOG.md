@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-05-21 — Bounce MIDI to audio + auto-crossfades
+
+### Added
+
+- **Bounce MIDI to audio**: inspector's MIDI clip view now has a "Bounce to audio…" button. Opens a guided dialog that plays the MIDI clip through your chosen MIDI output port and simultaneously records the device's audio return into a new audio clip on a chosen target track. Original MIDI clip is untouched. Includes pre-roll silence + tail capture for clean edges.
+- **Auto-crossfades** between overlapping same-track clips. When two audio clips on the same track overlap (by ≥ 5 ms), the engine and offline export automatically apply equal-power crossfades the length of the overlap. Per-clip explicit fadeIn/fadeOut still wins when larger. No destructive mutation of user values — fades are computed at playback / render time.
+
 ## [1.1.0] — 2026-05-21 — Loop region playback actually loops + click-to-audition on the ruler
 
 ### Fixed

@@ -1,8 +1,11 @@
 'use client'
 
-import { Sliders } from 'lucide-react'
+import { Disc3, Sliders } from 'lucide-react'
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Slider } from '@/components/ui/slider'
+import { BounceMidiDialog } from './BounceMidiDialog'
 import { PianoRollEditor } from './PianoRollEditor'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useProjectStore } from '@/lib/state/project-store'
@@ -189,6 +192,7 @@ function ProjectNotes() {
 
 function SingleMidiClipInspector({ clip }: { clip: Clip }) {
   const updateClip = useProjectStore((s) => s.updateClip)
+  const [bounceOpen, setBounceOpen] = useState(false)
   return (
     <div className="flex flex-col gap-4">
       <Field label="Name">
@@ -214,7 +218,12 @@ function SingleMidiClipInspector({ clip }: { clip: Clip }) {
         step={0.01}
         onChange={(v) => updateClip(clip.id, { duration: Math.max(0.05, v) })}
       />
+      <Button variant="outline" size="sm" onClick={() => setBounceOpen(true)} className="w-full">
+        <Disc3 className="size-3.5" />
+        Bounce to audio…
+      </Button>
       <PianoRollEditor clip={clip} />
+      <BounceMidiDialog clip={clip} open={bounceOpen} onOpenChange={setBounceOpen} />
     </div>
   )
 }
