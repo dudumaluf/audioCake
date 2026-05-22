@@ -4,6 +4,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-05-21 — Mixer channel strip rewrite
+
+### Fixed
+
+- Mixer channel strip's vertical gain fader was overlapping the horizontal pan slider when there wasn't enough vertical room (which was always, once the REV/DLY send rows from 1.3.0 were added). Eight stacked items in a ~250 px tall strip with a `flex-1` gain block meant the gain collapsed and visually clashed with its neighbours.
+
+### Changed
+
+- Channel strip restructured into header / scrollable body / pinned footer:
+  - **Header** (color chip + name) pinned at the top with a border.
+  - **Body** scrolls vertically if the strip is too short to fit everything.
+  - **Footer** (M / S buttons) pinned at the bottom with a border.
+- EQ and Sends grouped into two visually-distinct bordered sections instead of a vertical pile. Sends section gets a subtle teal accent so it reads as "wet" routing vs the dry EQ.
+- EQ and Send bands are now **horizontal rows** (label / slider / value) instead of stacked, so each row is ~18 px instead of ~30 px.
+- Gain fader has a hard `min-height: 100px` so it never collapses below a usable size.
+- Strip widened 96 → 108 px so EQ/Send labels have room to breathe.
+
 ## [1.4.0] — 2026-05-21 — Tighter loop playback + draggable playhead + cleaner ruler gestures
 
 ### Fixed
