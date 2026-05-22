@@ -73,6 +73,12 @@ export const KEYMAP: ShortcutBinding[] = [
     description: 'Delete selected clip(s)',
     label: 'Backspace',
   },
+  {
+    id: 'edit.delete',
+    code: 'Delete',
+    description: 'Delete selected clip(s)',
+    label: 'Delete',
+  },
   { id: 'edit.nudgeLeft', code: 'ArrowLeft', description: 'Nudge selection left', label: '←' },
   {
     id: 'edit.nudgeRight',
@@ -107,11 +113,16 @@ export const KEYMAP: ShortcutBinding[] = [
  * Decide whether a given KeyboardEvent matches a binding. Modifier checks
  * are strict so e.g. `Space` won't fire while a tooltip-style Shift+Space
  * binding is also defined.
+ *
+ * Cross-platform mod: on macOS the mod key is Cmd (event.metaKey); on
+ * Windows / Linux it's Ctrl. We accept either to be forgiving — users
+ * with a Mac keyboard plugged into a non-Mac (or vice versa) still get
+ * their expected behaviour. `navigator.platform` is deprecated and
+ * returns "" on some modern browsers, so we don't rely on it.
  */
 export function matchShortcut(e: KeyboardEvent, b: ShortcutBinding): boolean {
   if (e.code !== b.code) return false
-  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '')
-  const modKey = isMac ? e.metaKey : e.ctrlKey
+  const modKey = e.metaKey || e.ctrlKey
   if ((b.mod ?? false) !== modKey) return false
   if ((b.shift ?? false) !== e.shiftKey) return false
   // Disallow Alt as a strict policy — we don't bind it currently.

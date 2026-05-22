@@ -4,6 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.8] — 2026-05-21 — Fix: keyboard shortcuts (Cmd+D, Delete, etc.) silently not firing
+
+### Fixed
+
+- `matchShortcut` was using deprecated `navigator.platform` to decide between Cmd (Mac) and Ctrl (Windows/Linux). Modern Chrome returns an empty string for that property, so `isMac` evaluated false on Mac, and the matcher then required Ctrl instead of Cmd — meaning Cmd+D, Cmd+Z, etc. never matched on Mac and silently fell through to the browser's default (Cmd+D = bookmark this page). Replaced with `e.metaKey || e.ctrlKey` so either modifier works on any platform.
+- Added a second binding for `Delete` (forward-delete) alongside `Backspace`, since Mac extended keyboards have a real Delete key separate from Backspace.
+
 ## [1.0.7] — 2026-05-21 — Fix: clip selection cleared on mouse-up
 
 ### Fixed
