@@ -4,6 +4,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.1] — 2026-05-21 — Hotfix: TrackLane snapshot stability
+
+### Fixed
+
+- Infinite re-render loop on the timeline ("The result of getServerSnapshot should be cached…"). `TrackLane` was selecting per-track clips with `.filter()` directly inside the Zustand selector, which returned a new array on every snapshot. Refactored to select the full `clips` array and derive the per-track slice via `useMemo`.
+
 ## [1.0.0] — 2026-05-21 — Phase 7: polish + PWA — v1 complete
 
 ### Added

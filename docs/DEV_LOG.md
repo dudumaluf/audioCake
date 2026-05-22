@@ -395,3 +395,18 @@ Live test plan:
 - The end-to-end happy path works locally: plug Roland → record audio → arrange on the timeline → edit clips → save the project → export MP3/WAV/AAC. MIDI works for record + edit + play-back to the device.
 
 Total LoC outside `node_modules`, `.next`, and the soundtouch processor bundle: ~6.5k handwritten lines across types, state, audio engine, MIDI engine, encoders, storage, hooks, and ~30 React components. Documentation (`docs/` + comments) is ~1.5k lines and current as of this entry.
+
+---
+
+## 2026-05-21 — v1.0.1 hotfix: TrackLane snapshot stability
+
+### Done
+
+- `TrackLane.tsx` was selecting per-track clips with `useProjectStore((s) => s.clips.filter(...))`. That selector returns a fresh array on every call, which trips React's `getServerSnapshot` snapshot-stability check and causes an infinite re-render loop in dev.
+- Fixed by selecting the full `clips` array (referentially stable until mutated) and deriving the per-track slice via `useMemo` keyed on `[allClips, track.id]`. Standard Zustand-with-useSyncExternalStore pattern.
+- Audited the rest of the selectors. `.find()` selectors elsewhere (Inspector, ClipBlock, MidiClipBlock, PianoRollEditor) are safe because `.find()` returns a reference to an existing element rather than a newly allocated value, so unchanged matches yield the same reference and don't churn the snapshot.
+- No other selectors construct fresh arrays/objects/tuples inline.
+
+### Lesson recorded
+
+Future selectors that need to derive shape from store state should: (a) select the raw store field, (b) shape it with `useMemo`. Never `.filter` / `.map` / object-literal inside the selector body.

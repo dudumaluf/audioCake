@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ClipBlock } from './ClipBlock'
 import { MidiClipBlock } from './MidiClipBlock'
 import { useAssetStore } from '@/lib/state/asset-store'
@@ -23,7 +23,12 @@ interface TrackLaneProps {
  * the library (which carry an `assetId` via `dataTransfer`).
  */
 export function TrackLane({ track, height, pxPerSec, bpm }: TrackLaneProps) {
-  const clips = useProjectStore((s) => s.clips.filter((c) => c.trackId === track.id))
+  // Select the raw clips array (referentially stable until mutated) and
+  // derive the per-track slice via useMemo. Returning a fresh `.filter(...)`
+  // straight from the selector violates `getServerSnapshot` / React 18+'s
+  // useSyncExternalStore expectation that snapshots are reference-stable.
+  const allClips = useProjectStore((s) => s.clips)
+  const clips = useMemo(() => allClips.filter((c) => c.trackId === track.id), [allClips, track.id])
   const snap = useProjectStore((s) => s.snap)
   const selectedClipIds = useProjectStore((s) => s.selectedClipIds)
   const addClip = useProjectStore((s) => s.addClip)
