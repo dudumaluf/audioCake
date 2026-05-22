@@ -439,14 +439,47 @@ export function scheduleClips(clips: Clip[], tracks: Track[]): void {
   const transport = Tone.getTransport()
   transport.cancel(0)
   const tracksById = new Map(tracks.map((t) => [t.id, t]))
+  // Account for the stretched length of audio clips so a stretched clip
+  // that visually ends at startTime+duration but actually plays for
+  // duration/timeStretch seconds is still "playing now" when checked.
+  const transportSec = transport.seconds
 
   for (const c of clips) {
     if (c.kind === 'audio') {
       const entry = clipPlayers.get(c.id)
       if (!entry?.buffer) continue
-      transport.schedule((time) => {
-        entry.player.start(time, c.offset, c.duration)
-      }, c.startTime)
+
+      const ts = c.timeStretch ?? 1
+      const stretchedDur = c.duration / ts
+      const clipStart = c.startTime
+      const clipEnd = c.startTime + stretchedDur
+
+      if (transportSec >= clipEnd) {
+        // Whole clip is already in the past; nothing to schedule.
+        continue
+      }
+
+      if (transportSec > clipStart && transportSec < clipEnd) {
+        // Playhead is *inside* the clip — start the player immediately
+        // with a partial offset so we hear the clip from the current
+        // playhead position. `transport.schedule(callback, t)` doesn't
+        // fire for `t` already in the past, which is why scheduling
+        // alone produced silence when starting from mid-clip.
+        const playedAlready = transportSec - clipStart
+        const sourceOffset = c.offset + playedAlready * ts
+        const remainingSource = c.duration - playedAlready * ts
+        if (remainingSource > 0.001) {
+          // Use Tone's lookahead so the start is sample-accurate even
+          // when called from the main thread.
+          const startAt = `+${Tone.getContext().lookAhead}`
+          entry.player.start(startAt, sourceOffset, remainingSource)
+        }
+      } else {
+        // Future start — normal scheduling.
+        transport.schedule((time) => {
+          entry.player.start(time, c.offset, c.duration)
+        }, clipStart)
+      }
     } else {
       const sched = midiSchedules.get(c.id)
       const asset = midiAssetCache.get(c.assetId)

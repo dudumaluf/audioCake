@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.0.9] — 2026-05-21 — Fix: starting playback mid-clip produced silence
+
+### Fixed
+
+- If you seeked the playhead to a position inside an existing clip (by clicking the ruler) and hit Play, the clip wouldn't sound. `scheduleClips` was using `Tone.getTransport().schedule(callback, clip.startTime)` to start each player, but Tone's transport silently skips scheduled events whose time has already passed — so any clip starting earlier than the current playhead was a no-op. Now detects when the playhead is *inside* a clip's playable window and immediately starts the player with a partial offset, so playback from mid-clip works as you'd expect.
+
+### Note
+
+- True scrub-while-dragging-playhead playback isn't implemented yet (it needs a dedicated scrub buffer pipeline). The supported workflow is: click the ruler to seek, then hit Space to play from that point. Recorded in roadmap.
+
 ## [1.0.8] — 2026-05-21 — Fix: keyboard shortcuts (Cmd+D, Delete, etc.) silently not firing
 
 ### Fixed
