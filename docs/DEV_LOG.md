@@ -439,3 +439,34 @@ Anything you drop into a flexbox layout (which `react-resizable-panels` is, unde
 ### Lesson recorded
 
 When a third-party React component takes a `number | string` prop for sizing, **never assume numbers are percentages** — modern libraries default to CSS-spec semantics (numbers = pixels). Always check the rendered inline style in the browser DOM inspector when sizing looks wrong; it tells you the exact computed value the library applied.
+
+---
+
+## 2026-05-23 — Session 1: scrub clicks, mute ramps, tempo-sync delay, REC indicator
+
+Start of the "AudioCake polish + evolution" plan. Direction: polish first, personal-tool focus. Today: the four smallest fixes that buy the most "stops being annoying" per minute.
+
+### Done
+
+- **Scrub clicks killed**. `auditionAt()` now wraps each clip player snippet with a 5 ms fade-in and 15 ms fade-out, with the original fade values restored via a per-clip setTimeout once the snippet ends. The previous in-flight audition list was a `Set<Tone.Player>` that only knew how to call `stop()` — replaced with a `Map<clipId, AuditionState>` so we can restore the original `player.fadeIn` / `player.fadeOut` even when a quick scrub kills a still-running audition.
+- **Mute / solo smooth ramps**. New `muteGain: Tone.Gain` inserted between Compressor and Channel. Toggling M/S ramps the gain to 0 or 1 over 10 ms via `linearRampToValueAtTime`. `channel.mute` is now always `false`; mute is purely the muteGain. Sends now tap **post-mute** (from `muteGain`, not `channel`) so the wet path silences alongside the dry — otherwise muting a track with reverb would leave a tail hanging.
+- **Tempo-synced delay**. The master `FeedbackDelay`'s `delayTime` follows BPM. Default note = 1/8 dotted (`delayDivisionBeats = 1.5`). `setBpm()` ramps `delayTime` to `60 / bpm * delayDivisionBeats` over 50 ms so the change itself is click-free. New `setDelayDivisionBeats(beats)` exported for the FX dialog. Exporter accepts `bpm` + `delayDivisionBeats` in `ExportOptions` and builds the offline delay with the matching time so exports match what was heard.
+- **Pulsing REC indicator**. Brand dot in topbar turns into a 0.8 s pulsing red disc with `box-shadow` halo when `recorder.state === 'recording' | 'count-in'`. CSS keyframe `audiocake-rec-pulse` in `globals.css`. Title attribute switches between "Recording" / "Count-in…" / "AudioCake".
+
+### Notes
+
+- Considered using `Tone.Gain` per send with a separate ramp, but the simpler "sends tap post-muteGain" pattern means one ramp silences everything. Cleaner mental model too.
+- The audition restore timer is `Math.ceil((dur + AUDITION_FADE_OUT + 0.05) * 1000)` — that 50 ms buffer absorbs scheduler jitter so we never restore fades while the snippet is still playing out its fade-out.
+- The `delayTimeForBpm` helper lives next to `delayDivisionBeats` so both can become live state in S2 without restructuring.
+
+### Verify
+
+- [x] `pnpm format` / `lint` / `build` all green.
+- [ ] Manual: drag the playhead across clips — no clicks.
+- [ ] Manual: toggle M/S during playback — no clicks; sends silence with the dry signal.
+- [ ] Manual: change BPM with a delay send up — repeats follow the new tempo without artefacts.
+- [ ] Manual: hit Record — brand dot pulses red until you stop.
+
+### Next
+
+Session 2: FX settings dialog (reverb decay + delay division/feedback) with project-state persistence.

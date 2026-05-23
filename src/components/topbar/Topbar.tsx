@@ -49,7 +49,15 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
   return (
     <header className="border-border bg-panel/60 flex h-14 w-full shrink-0 items-center gap-3 overflow-hidden border-b px-3 backdrop-blur">
       <div className="flex shrink-0 items-center gap-2 pr-1">
-        <div className="bg-primary size-3 rounded-sm" />
+        {/* Brand dot doubles as a glanceable REC state indicator: pulsing
+            red while we're recording or counting in, calm amber otherwise. */}
+        <div
+          className={cn(
+            'size-3 rounded-full',
+            isRecording || isCountIn ? 'bg-record animate-rec-pulse' : 'bg-primary rounded-sm',
+          )}
+          title={isRecording ? 'Recording' : isCountIn ? 'Count-in…' : 'AudioCake'}
+        />
         <ProjectSwitcher />
       </div>
 

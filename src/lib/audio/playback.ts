@@ -33,11 +33,18 @@ interface TrackChannel {
   channel: Tone.Channel
   eq: Tone.EQ3
   compressor: Tone.Compressor
-  /** Send to the global reverb return. */
+  /** Tone.Gain between compressor and channel. Driven by ramped automation
+   *  for click-free mute/solo toggles (instead of `channel.mute = bool`
+   *  which jumps the signal to 0 and produces a click). 1 = audible,
+   *  0 = effectively muted. */
+  muteGain: Tone.Gain
+  /** Send to the global reverb return. Tapped from `muteGain` (post-mute)
+   *  so toggling mute also silences the wet sends — otherwise muting a
+   *  track with reverb would leave the room tail audible. */
   reverbSend: Tone.Gain
-  /** Send to the global delay return. */
+  /** Send to the global delay return. Same post-mute tap as reverbSend. */
   delaySend: Tone.Gain
-  /** Last applied solo state across all tracks (recomputed each apply). */
+  /** Last applied solo-aware mute decision, used to detect toggles. */
   effectiveMute: boolean
 }
 
@@ -81,6 +88,16 @@ let metronomeSynth: Tone.MembraneSynth | null = null
 let metronomeEventId: number | null = null
 let metronomeEnabled = false
 
+/** Delay note value in beats (1 = 1/4 note, 0.5 = 1/8, 1.5 = 1/8 dotted,
+ *  0.25 = 1/16, 2 = 1/2, etc.). Default = 1/8 dotted, a classic delay feel
+ *  that swings nicely against quarter-note backbeats. Made user-tunable
+ *  via the FX dialog in session 2. */
+let delayDivisionBeats = 1.5
+
+function delayTimeForBpm(bpm: number): number {
+  return (60 / bpm) * delayDivisionBeats
+}
+
 function ensureInit() {
   if (initialized) return
   // Master limiter sits between everything and Tone.Destination so peaks
@@ -93,7 +110,11 @@ function ensureInit() {
   // Global FX returns. Tracks send into these via gain nodes; the returns
   // mix into the master limiter so wet signal still respects the ceiling.
   masterReverb = new Tone.Reverb({ decay: 2.4, wet: 1 })
-  masterDelay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.35, wet: 1 })
+  masterDelay = new Tone.FeedbackDelay({
+    delayTime: delayTimeForBpm(activeBpm),
+    feedback: 0.35,
+    wet: 1,
+  })
   masterReverb.connect(masterLimiter)
   masterDelay.connect(masterLimiter)
 
@@ -124,6 +145,23 @@ export function setBpm(bpm: number): void {
   Tone.getTransport().bpm.value = bpm
   activeBpm = bpm
   if (activeClockPortId) updateMidiClockBpm(activeClockPortId, bpm)
+  // Keep the master delay in sync with tempo so repeats stay on the grid
+  // when the user changes BPM.
+  if (masterDelay) {
+    masterDelay.delayTime.rampTo(delayTimeForBpm(bpm), 0.05)
+  }
+}
+
+/**
+ * Update the delay's division (beats per repeat). 1 = 1/4 note,
+ * 0.5 = 1/8, 1.5 = 1/8 dotted, 0.25 = 1/16, etc.
+ * Wired to the FX dialog in session 2.
+ */
+export function setDelayDivisionBeats(beats: number): void {
+  delayDivisionBeats = Math.max(0.0625, beats) // floor at 1/64 just in case
+  if (masterDelay) {
+    masterDelay.delayTime.rampTo(delayTimeForBpm(activeBpm), 0.05)
+  }
 }
 
 /**
@@ -176,13 +214,18 @@ export function applyTracks(tracks: Track[]): void {
   const liveIds = new Set(tracks.map((t) => t.id))
   const anySoloed = tracks.some((t) => t.solo)
 
+  const ctx = Tone.getContext()
+  const MUTE_RAMP_SEC = 0.01
+
   for (const t of tracks) {
     let entry = trackChannels.get(t.id)
     if (!entry) {
       const channel = new Tone.Channel({
         volume: t.gainDb,
         pan: t.pan,
-        mute: t.mute,
+        // We never use `channel.mute` directly — it produces a click on
+        // toggle. The `muteGain` below handles mute via a ramped Tone.Gain.
+        mute: false,
       })
       const eq = new Tone.EQ3({ low: 0, mid: 0, high: 0 })
       const compressor = new Tone.Compressor({
@@ -191,28 +234,47 @@ export function applyTracks(tracks: Track[]): void {
         attack: 0.01,
         release: 0.1,
       })
+      // Pre-channel mute gain so toggling silences sends + dry signal in one
+      // place; starts at full audible (1) — apply the actual target below.
+      const muteGain = new Tone.Gain(t.mute ? 0 : 1)
       // Per-track signal flow:
-      //   incoming → EQ → Compressor → Channel (gain/pan/mute) → master limiter
-      //                                         ↘︎ reverbSend → masterReverb → limiter
-      //                                         ↘︎ delaySend  → masterDelay  → limiter
-      // Sends tap post-channel so mute/solo still silences them.
-      eq.chain(compressor, channel)
+      //   incoming → EQ → Compressor → muteGain → Channel (gain/pan) → master limiter
+      //                                       ↘︎ reverbSend → masterReverb → limiter
+      //                                       ↘︎ delaySend  → masterDelay  → limiter
+      // Sends tap post-mute so toggling mute silences them too.
+      eq.chain(compressor, muteGain, channel)
       channel.connect(masterInput())
 
       const reverbSend = new Tone.Gain(0)
       const delaySend = new Tone.Gain(0)
-      channel.connect(reverbSend)
-      channel.connect(delaySend)
+      muteGain.connect(reverbSend)
+      muteGain.connect(delaySend)
       if (masterReverb) reverbSend.connect(masterReverb)
       if (masterDelay) delaySend.connect(masterDelay)
 
-      entry = { channel, eq, compressor, reverbSend, delaySend, effectiveMute: t.mute }
+      entry = {
+        channel,
+        eq,
+        compressor,
+        muteGain,
+        reverbSend,
+        delaySend,
+        effectiveMute: t.mute,
+      }
       trackChannels.set(t.id, entry)
     }
     entry.channel.volume.value = t.gainDb
     entry.channel.pan.value = t.pan
     const effectiveMute = anySoloed ? !t.solo : t.mute
-    entry.channel.mute = effectiveMute
+    if (effectiveMute !== entry.effectiveMute) {
+      // Toggled: ramp the muteGain to the target instead of jumping.
+      const target = effectiveMute ? 0 : 1
+      const now = ctx.currentTime
+      const gainParam = entry.muteGain.gain
+      gainParam.cancelScheduledValues(now)
+      gainParam.setValueAtTime(gainParam.value, now)
+      gainParam.linearRampToValueAtTime(target, now + MUTE_RAMP_SEC)
+    }
     entry.effectiveMute = effectiveMute
 
     // Apply EQ / compressor settings if specified; otherwise leave defaults
@@ -240,6 +302,7 @@ export function applyTracks(tracks: Track[]): void {
         entry.channel.disconnect()
         entry.eq.disconnect()
         entry.compressor.disconnect()
+        entry.muteGain.disconnect()
         entry.reverbSend.disconnect()
         entry.delaySend.disconnect()
       } catch {
@@ -248,6 +311,7 @@ export function applyTracks(tracks: Track[]): void {
       entry.channel.dispose()
       entry.eq.dispose()
       entry.compressor.dispose()
+      entry.muteGain.dispose()
       entry.reverbSend.dispose()
       entry.delaySend.dispose()
       trackChannels.delete(id)
@@ -635,7 +699,34 @@ export function rescheduleNow(clips: Clip[], tracks: Track[]): void {
  * transport). Skipped if the transport is already running.
  */
 const AUDITION_SEC = 0.25
-const auditionPlayers = new Set<Tone.Player>()
+/** Short fade applied to every audition snippet so starting / re-triggering
+ *  mid-waveform doesn't produce a DC click. 5 ms in, 15 ms out is
+ *  inaudible musically but kills the click completely. */
+const AUDITION_FADE_IN = 0.005
+const AUDITION_FADE_OUT = 0.015
+
+interface AuditionState {
+  player: Tone.Player
+  /** Original fade values on the player so we can restore them after the
+   *  snippet completes — otherwise the next real-transport playback would
+   *  inherit the tiny audition fades. */
+  originalFadeIn: number
+  originalFadeOut: number
+  /** Timer that restores the original fades + clears this entry. */
+  restoreTimer: number
+}
+const auditionState = new Map<string, AuditionState>()
+
+function stopAndRestoreAudition(entry: AuditionState): void {
+  try {
+    if (entry.player.state === 'started') entry.player.stop()
+  } catch {
+    /* race against natural end — safe to ignore */
+  }
+  entry.player.fadeIn = entry.originalFadeIn
+  entry.player.fadeOut = entry.originalFadeOut
+  if (entry.restoreTimer) window.clearTimeout(entry.restoreTimer)
+}
 
 export async function auditionAt(clips: Clip[], timeSec: number): Promise<void> {
   ensureInit()
@@ -654,15 +745,14 @@ export async function auditionAt(clips: Clip[], timeSec: number): Promise<void> 
 
   await preloadClips(relevant)
 
-  // Stop any in-flight audition first so quick clicks don't pile up.
-  for (const p of auditionPlayers) {
-    try {
-      if (p.state === 'started') p.stop()
-    } catch {
-      /* */
-    }
+  // Stop any in-flight audition first so quick scrub steps don't pile up.
+  // Restoring fades is important here — if a previous audition was still
+  // active, killing it without restoring would leave the player with the
+  // micro fade values and the next real playback would sound truncated.
+  for (const entry of auditionState.values()) {
+    stopAndRestoreAudition(entry)
   }
-  auditionPlayers.clear()
+  auditionState.clear()
 
   const ctx = Tone.getContext()
   const now = ctx.currentTime + ctx.lookAhead
@@ -674,11 +764,34 @@ export async function auditionAt(clips: Clip[], timeSec: number): Promise<void> 
     const sourceOffset = c.offset + playedAlready
     const dur = Math.min(AUDITION_SEC, c.duration - playedAlready)
     if (dur <= 0.01) continue
+
+    // Save the clip's real fade values so we can restore them after the
+    // snippet finishes.
+    const originalFadeIn = entry.player.fadeIn as number
+    const originalFadeOut = entry.player.fadeOut as number
+    entry.player.fadeIn = AUDITION_FADE_IN
+    entry.player.fadeOut = AUDITION_FADE_OUT
     try {
       entry.player.start(now, sourceOffset, dur)
-      auditionPlayers.add(entry.player)
+      const restoreTimer = window.setTimeout(
+        () => {
+          entry.player.fadeIn = originalFadeIn
+          entry.player.fadeOut = originalFadeOut
+          auditionState.delete(c.id)
+        },
+        // Give the fade-out room to complete before we restore.
+        Math.ceil((dur + AUDITION_FADE_OUT + 0.05) * 1000),
+      )
+      auditionState.set(c.id, {
+        player: entry.player,
+        originalFadeIn,
+        originalFadeOut,
+        restoreTimer,
+      })
     } catch {
-      /* */
+      // Restore immediately if the start call threw.
+      entry.player.fadeIn = originalFadeIn
+      entry.player.fadeOut = originalFadeOut
     }
   }
 }

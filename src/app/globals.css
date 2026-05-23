@@ -150,6 +150,23 @@
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum' 1;
   }
+
+  /* Pulsing dot for the REC indicator in the topbar. Slow 0.8s cycle so it
+     reads as "active" without being a distraction. */
+  @keyframes audiocake-rec-pulse {
+    0%,
+    100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 var(--color-record);
+    }
+    50% {
+      opacity: 0.55;
+      box-shadow: 0 0 0 4px transparent;
+    }
+  }
+  .animate-rec-pulse {
+    animation: audiocake-rec-pulse 0.8s ease-in-out infinite;
+  }
 }
 
 /* Touch best-effort: bump the click hit area of small icon buttons so the

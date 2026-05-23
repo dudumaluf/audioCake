@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-05-23 — Session 1: scrub clicks, mute ramps, tempo-sync delay, REC indicator
+
+### Fixed
+
+- **Scrub clicks**: audition snippets fired by ruler click / playhead-drag scrub no longer click. Each snippet now gets a 5 ms fade-in and a 15 ms fade-out applied on the clip player just before `start()`, and the original fade values are restored when the snippet finishes via a per-clip restore timer. Inaudible musically; kills the DC discontinuity that was causing the clicks.
+- **Mute / solo clicks**: toggling M or S during playback no longer produces a click. Replaced binary `channel.mute = bool` with a `Tone.Gain` ramped via `linearRampToValueAtTime` over 10 ms. Sends now tap post-mute so the wet path silences with the dry. Track signal flow is now `EQ → Compressor → muteGain → Channel → master limiter` with reverb / delay sends tapped off `muteGain`.
+
+### Added
+
+- **Tempo-synced delay**: the master delay's `delayTime` now follows the project BPM. Default note value is 1/8 dotted (1.5 beats); the helper `setDelayDivisionBeats()` is exposed for the FX dialog coming in session 2. The exporter takes the project BPM and writes the same delayTime offline so the exported mix matches what you heard.
+- **Pulsing REC indicator** in the topbar: the brand dot turns into a pulsing red disc while recording or in count-in, giving a glanceable confirmation that capture is active.
+
 ## [1.4.2] — 2026-05-21 — Fix: mixer controls had no effect on audio
 
 ### Fixed

@@ -14,6 +14,10 @@ export interface ExportOptions {
   bitDepth?: WavBitDepth
   sampleRate?: number
   normalize?: boolean
+  /** Project BPM. Used to compute tempo-synced delay time. */
+  bpm?: number
+  /** Delay note value in beats (1=1/4, 0.5=1/8, 1.5=1/8dotted, etc.). */
+  delayDivisionBeats?: number
   /** Progress callback called with 0..1. */
   onProgress?: (fraction: number, stage: 'render' | 'encode') => void
 }
@@ -79,9 +83,16 @@ export async function renderAndExport(
   const masterLimiter = new Tone.Limiter(-0.3)
   masterLimiter.toDestination()
 
-  // Global FX returns.
+  // Global FX returns. Delay time follows the project's BPM + division so
+  // the exported mix matches what the user hears live.
   const reverb = new Tone.Reverb({ decay: 2.4, wet: 1 })
-  const delay = new Tone.FeedbackDelay({ delayTime: 0.375, feedback: 0.35, wet: 1 })
+  const exportBpm = options.bpm ?? 120
+  const exportDelayBeats = options.delayDivisionBeats ?? 1.5
+  const delay = new Tone.FeedbackDelay({
+    delayTime: (60 / exportBpm) * exportDelayBeats,
+    feedback: 0.35,
+    wet: 1,
+  })
   reverb.connect(masterLimiter)
   delay.connect(masterLimiter)
 

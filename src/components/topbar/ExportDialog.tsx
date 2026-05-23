@@ -41,6 +41,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const tracks = useProjectStore((s) => s.tracks)
   const clips = useProjectStore((s) => s.clips)
   const sampleRate = useProjectStore((s) => s.sampleRate)
+  const bpm = useProjectStore((s) => s.bpm)
 
   const [format, setFormat] = useState<ExportFormat>('mp3')
   const [bitrateKbps, setBitrateKbps] = useState(192)
@@ -92,6 +93,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
         normalize,
         bitrateKbps,
         bitDepth: wavBitDepth,
+        bpm,
         onProgress: (frac, s) => {
           setProgress(frac)
           setStage(s)
