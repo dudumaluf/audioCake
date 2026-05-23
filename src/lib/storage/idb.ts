@@ -24,10 +24,29 @@ interface StoredAudioAsset {
   sourceDevice?: string
 }
 
+/**
+ * A snapshot of a project at a point in time. Stored as a full `Project`
+ * envelope under a stable `id`, indexed by `projectId` (which project it
+ * belongs to) + `createdAt` (recency).
+ *
+ * Open vs branch: opening a snapshot replaces the live project with its
+ * contents but keeps the original `projectId` (overwrites current).
+ * Branching does the same but generates a new `projectId` so the live
+ * project becomes a separate entry.
+ */
+export interface ProjectSnapshot {
+  id: string
+  projectId: string
+  name: string
+  createdAt: number
+  project: Project
+}
+
 class AudioCakeDB extends Dexie {
   audioAssets!: Table<StoredAudioAsset, string>
   projects!: Table<Project, string>
   midiAssets!: Table<MidiAsset, string>
+  snapshots!: Table<ProjectSnapshot, string>
 
   constructor() {
     super('audiocake')
@@ -43,6 +62,14 @@ class AudioCakeDB extends Dexie {
       audioAssets: 'id, createdAt, name',
       projects: 'id, updatedAt, name',
       midiAssets: 'id, createdAt, name',
+    })
+    // v4 adds the snapshots table. Indexed by projectId so listing per
+    // project is fast, and createdAt for chronological order.
+    this.version(4).stores({
+      audioAssets: 'id, createdAt, name',
+      projects: 'id, updatedAt, name',
+      midiAssets: 'id, createdAt, name',
+      snapshots: 'id, projectId, createdAt',
     })
   }
 }
@@ -136,4 +163,22 @@ export async function deleteMidiAsset(id: string): Promise<void> {
 
 export async function renameMidiAsset(id: string, name: string): Promise<void> {
   await db.midiAssets.update(id, { name })
+}
+
+// ---- Snapshots ----
+
+export async function putSnapshot(snapshot: ProjectSnapshot): Promise<void> {
+  await db.snapshots.put(snapshot)
+}
+
+export async function listSnapshots(projectId: string): Promise<ProjectSnapshot[]> {
+  return db.snapshots.where('projectId').equals(projectId).reverse().sortBy('createdAt')
+}
+
+export async function getSnapshot(id: string): Promise<ProjectSnapshot | null> {
+  return (await db.snapshots.get(id)) ?? null
+}
+
+export async function deleteSnapshot(id: string): Promise<void> {
+  await db.snapshots.delete(id)
 }

@@ -1,6 +1,16 @@
 'use client'
 
-import { Check, ChevronDown, FilePlus, FolderOpen, Save, Trash2, Upload } from 'lucide-react'
+import {
+  Camera,
+  Check,
+  ChevronDown,
+  FilePlus,
+  FolderOpen,
+  GitBranch,
+  Save,
+  Trash2,
+  Upload,
+} from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ulid } from 'ulid'
@@ -31,7 +41,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useProjectStore } from '@/lib/state/project-store'
-import { deleteProject as idbDeleteProject, listProjects, putProject } from '@/lib/storage/idb'
+import {
+  deleteProject as idbDeleteProject,
+  deleteSnapshot as idbDeleteSnapshot,
+  listProjects,
+  listSnapshots,
+  putProject,
+  putSnapshot,
+  type ProjectSnapshot,
+} from '@/lib/storage/idb'
 import { exportProject, importProject } from '@/lib/storage/project-io'
 import { useAssetStore } from '@/lib/state/asset-store'
 import type { Project, SampleRate } from '@/lib/types'
@@ -56,6 +74,10 @@ export function ProjectSwitcher() {
   const [newOpen, setNewOpen] = useState(false)
   const [newName, setNewName] = useState('Untitled')
   const [newRate, setNewRate] = useState<SampleRate>(48000)
+  // Snapshot state. A snapshot dialog hosts list + save form.
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false)
+  const [snapshots, setSnapshots] = useState<ProjectSnapshot[]>([])
+  const [snapshotName, setSnapshotName] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -149,6 +171,80 @@ export function ProjectSwitcher() {
     [loadAssets, loadProjectData, refresh],
   )
 
+  // --- Snapshots ---
+
+  const refreshSnapshots = useCallback(async () => {
+    setSnapshots(await listSnapshots(projectId))
+  }, [projectId])
+
+  const openSnapshotsDialog = useCallback(() => {
+    setSnapshotName('')
+    setSnapshotsOpen(true)
+    queueMicrotask(() => void refreshSnapshots())
+  }, [refreshSnapshots])
+
+  const handleSaveSnapshot = useCallback(async () => {
+    const trimmed = snapshotName.trim()
+    if (!trimmed) {
+      toast.error('Name your snapshot')
+      return
+    }
+    const p = toProject()
+    p.updatedAt = Date.now()
+    const snap: ProjectSnapshot = {
+      id: ulid(),
+      projectId: p.id,
+      name: trimmed,
+      createdAt: Date.now(),
+      project: p,
+    }
+    await putSnapshot(snap)
+    setSnapshotName('')
+    await refreshSnapshots()
+    toast.success('Snapshot saved', { description: trimmed })
+  }, [snapshotName, toProject, refreshSnapshots])
+
+  // Open: restore over the current project (same id; live project is
+  // overwritten on the next autosave).
+  const handleOpenSnapshot = useCallback(
+    (s: ProjectSnapshot) => {
+      loadProjectData(s.project)
+      setSnapshotsOpen(false)
+      toast.success('Snapshot opened', { description: s.name })
+    },
+    [loadProjectData],
+  )
+
+  // Branch: load with a fresh projectId so the live project becomes a
+  // separate entry in IDB (next autosave puts it under the new id).
+  const handleBranchSnapshot = useCallback(
+    async (s: ProjectSnapshot) => {
+      const branched: Project = {
+        ...s.project,
+        id: ulid(),
+        name: `${s.project.name} (${s.name})`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      }
+      loadProjectData(branched)
+      await putProject(branched)
+      await refresh()
+      setSnapshotsOpen(false)
+      toast.success('Branched from snapshot', { description: branched.name })
+    },
+    [loadProjectData, refresh],
+  )
+
+  const handleDeleteSnapshot = useCallback(
+    async (s: ProjectSnapshot) => {
+      if (!confirm(`Delete snapshot "${s.name}"?`)) return
+      await idbDeleteSnapshot(s.id)
+      await refreshSnapshots()
+      toast.success('Snapshot deleted')
+    },
+    [refreshSnapshots],
+  )
+
   return (
     <div className="flex items-center gap-1">
       {renaming ? (
@@ -198,6 +294,9 @@ export function ProjectSwitcher() {
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleSave}>
             <Save className="size-4" /> Save now
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openSnapshotsDialog}>
+            <Camera className="size-4" /> Snapshots…
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={handleExportAcproj}>
@@ -310,6 +409,88 @@ export function ProjectSwitcher() {
               }}
             >
               Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={snapshotsOpen} onOpenChange={setSnapshotsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Snapshots</DialogTitle>
+            <DialogDescription>
+              Save the project state under a name. Open to restore, or branch to fork into a new
+              project without touching this one.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <Input
+                value={snapshotName}
+                onChange={(e) => setSnapshotName(e.target.value)}
+                placeholder="e.g. before chorus"
+                className="h-8 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleSaveSnapshot()
+                }}
+              />
+              <Button onClick={handleSaveSnapshot} size="sm" className="shrink-0">
+                <Camera className="size-3.5" /> Save
+              </Button>
+            </div>
+            {snapshots.length === 0 ? (
+              <div className="text-muted-foreground py-6 text-center text-xs">
+                No snapshots yet. Save one before trying a risky edit.
+              </div>
+            ) : (
+              <div className="border-border max-h-72 overflow-y-auto rounded-sm border">
+                {snapshots.map((s) => (
+                  <div
+                    key={s.id}
+                    className="border-border/60 hover:bg-foreground/5 flex items-center gap-2 border-b px-2 py-1.5 text-sm last:border-b-0"
+                  >
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{s.name}</span>
+                      <span className="text-muted-foreground text-[10px]">
+                        {new Date(s.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-foreground/80 h-7 px-2 text-xs"
+                      onClick={() => handleOpenSnapshot(s)}
+                      title="Restore over the current project"
+                    >
+                      Open
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-foreground/80 h-7 px-2 text-xs"
+                      onClick={() => void handleBranchSnapshot(s)}
+                      title="Fork into a new project, leaving this one alone"
+                    >
+                      <GitBranch className="size-3" />
+                      Branch
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive h-7 px-2"
+                      onClick={() => void handleDeleteSnapshot(s)}
+                      title="Delete snapshot"
+                    >
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSnapshotsOpen(false)}>
+              Done
             </Button>
           </DialogFooter>
         </DialogContent>

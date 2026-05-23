@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-05-23 — Session 7: snapshots
+
+### Added
+
+- **Project snapshots**: save the project state under a name (e.g. "before chorus") and later either Open (restore over the live project) or Branch (fork into a brand-new project entry). Snapshots live in a new IndexedDB `snapshots` table (schema v4) keyed by `projectId` so each project carries its own history. Accessed via the project menu → Snapshots… → opens a dialog with a save form on top and the list of existing snapshots below.
+
+### Migration
+
+IDB schema bumped to v4. The added `snapshots` table is empty for existing users; no project data changes.
+
 ## [1.10.0] — 2026-05-23 — Session 6: stem export
 
 ### Added

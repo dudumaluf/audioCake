@@ -630,3 +630,32 @@ Session 6: stem export.
 ### Next
 
 Session 7: snapshots — branchable save points.
+
+---
+
+## 2026-05-23 — Session 7: snapshots
+
+### Done
+
+- **IDB schema v4** adds a `snapshots` table (`id, projectId, createdAt`). New `ProjectSnapshot` interface in `idb.ts` holds `{ id, projectId, name, createdAt, project: Project }`.
+- **CRUD helpers**: `putSnapshot`, `listSnapshots(projectId)` (reverse-sorted by createdAt, scoped to the project), `getSnapshot`, `deleteSnapshot`.
+- **ProjectSwitcher**: new menu item "Snapshots…" opens a dialog. Dialog has a save form (name + Save button) on top and the per-project list below. Each row offers Open / Branch / Delete:
+  - **Open**: `loadProjectData(snapshot.project)` — the live project is now the snapshot's contents under the same projectId, so the next autosave overwrites it.
+  - **Branch**: deep-copy the snapshot's project with a fresh `id`, name becomes `"<orig name> (<snapshot name>)"`, then `loadProjectData` + immediately `putProject` so it appears in the recent-projects list right away.
+  - **Delete**: confirm + remove from IDB.
+- Save reads `toProject()` for a current envelope, stamps `createdAt`, and puts.
+
+### Notes
+
+- I chose explicit Open + Branch rather than a single "Restore" because the personal-tool use case is exactly: "try a wild edit and if I don't like it, go back". Branch gives a safety net (the variation lives on as its own project) for when you want to keep the experiment too.
+- Did not wrap snapshot Open in confirm(). The autosave indicator + ability to immediately snapshot again before Open made it feel low-stakes; we can add a "you have unsaved changes since the snapshot was taken" check if it ever bites.
+
+### Verify
+
+- [x] format / lint / build green.
+- [ ] Manual: project menu → Snapshots → save "v1" → make 3 destructive edits → open Snapshots → Open v1 → original state back.
+- [ ] Manual: same flow but click Branch instead → see a new project in the recent list with the snapshot's contents.
+
+### Next
+
+Session 8: feel — smoother playhead, better waveforms, onboarding.
