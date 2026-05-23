@@ -92,12 +92,31 @@ export function usePlaybackEngine() {
     setDelayParams(fxSettings.delay)
   }, [fxSettings])
 
-  // rAF playhead loop, only while playing.
+  // rAF playhead loop. We extrapolate between Tone.Transport ticks using
+  // performance.now() so the visual playhead glides smoothly even when
+  // the audio context's transport time only ticks every few ms. Re-syncs
+  // to the real transport time every 100 ms so drift can't accumulate.
   useEffect(() => {
     if (!isPlaying) return
     let raf = 0
+    let baseWallMs = performance.now()
+    let baseTransport = getTransportTime()
+    let lastResyncWallMs = baseWallMs
+
     const tick = () => {
-      setPlayhead(getTransportTime())
+      const nowWall = performance.now()
+      // Re-anchor every 100 ms so the extrapolation can't drift past the
+      // real audio clock (and so loop-jumps are caught quickly).
+      if (nowWall - lastResyncWallMs >= 100) {
+        const real = getTransportTime()
+        baseWallMs = nowWall
+        baseTransport = real
+        lastResyncWallMs = nowWall
+        setPlayhead(real)
+      } else {
+        const extrapolated = baseTransport + (nowWall - baseWallMs) / 1000
+        setPlayhead(extrapolated)
+      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)

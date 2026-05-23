@@ -20,6 +20,8 @@ interface StoredAudioAsset {
   sampleRate: number
   channels: 1 | 2
   peaks: number[]
+  /** Interleaved [min, max] peaks; added in session 8 for richer waveforms. */
+  peaksMinMax?: number[]
   createdAt: number
   sourceDevice?: string
 }
@@ -84,6 +86,7 @@ function toAudioAsset(s: StoredAudioAsset): AudioAsset {
     sampleRate: s.sampleRate as 44100 | 48000,
     channels: s.channels,
     peaks: new Float32Array(s.peaks),
+    peaksMinMax: s.peaksMinMax ? new Float32Array(s.peaksMinMax) : undefined,
     createdAt: s.createdAt,
     sourceDevice: s.sourceDevice,
   }
@@ -97,6 +100,7 @@ function toStored(a: AudioAsset): StoredAudioAsset {
     sampleRate: a.sampleRate,
     channels: a.channels,
     peaks: Array.from(a.peaks),
+    peaksMinMax: a.peaksMinMax ? Array.from(a.peaksMinMax) : undefined,
     createdAt: a.createdAt,
     sourceDevice: a.sourceDevice,
   }

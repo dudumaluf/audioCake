@@ -174,7 +174,7 @@ export function LibraryItem({ asset }: { asset: AudioAsset }) {
         </div>
 
         <div className="h-9 w-full overflow-hidden rounded-sm">
-          <MiniWaveform peaks={asset.peaks} active={isPlaying} />
+          <MiniWaveform peaks={asset.peaks} peaksMinMax={asset.peaksMinMax} active={isPlaying} />
         </div>
 
         {asset.sourceDevice && (

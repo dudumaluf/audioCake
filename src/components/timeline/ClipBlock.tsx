@@ -143,6 +143,11 @@ export function ClipBlock({ clip, pxPerSec, trackColor, selected, onSelect }: Cl
   }
 
   const visiblePeaks = useVisiblePeaks(asset?.peaks, asset?.durationSec ?? 0, live)
+  const visiblePeaksMinMax = useVisiblePeaksMinMax(
+    asset?.peaksMinMax,
+    asset?.durationSec ?? 0,
+    live,
+  )
 
   return (
     <div
@@ -165,7 +170,7 @@ export function ClipBlock({ clip, pxPerSec, trackColor, selected, onSelect }: Cl
     >
       <div data-role="clip-body" className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-0 opacity-90 mix-blend-overlay">
-          <MiniWaveform peaks={visiblePeaks} active />
+          <MiniWaveform peaks={visiblePeaks} peaksMinMax={visiblePeaksMinMax} active />
         </div>
         {/* Fade-in shadow */}
         {fadeInPx > 1 && (
@@ -252,6 +257,22 @@ function useVisiblePeaks(
   const end = Math.min(assetPeaks.length, Math.ceil((clip.offset + clip.duration) * peaksPerSec))
   if (end <= start) return EMPTY_PEAKS
   return assetPeaks.subarray(start, end)
+}
+
+/** Same as useVisiblePeaks but for the interleaved [min,max] flavour —
+ *  index math needs the *2 because each peak window takes two floats. */
+function useVisiblePeaksMinMax(
+  assetPeaks: Float32Array | undefined,
+  assetDuration: number,
+  clip: Clip,
+): Float32Array | undefined {
+  if (!assetPeaks || assetPeaks.length === 0 || assetDuration <= 0) return undefined
+  const numPeaks = assetPeaks.length / 2
+  const peaksPerSec = numPeaks / assetDuration
+  const startPeak = Math.max(0, Math.floor(clip.offset * peaksPerSec))
+  const endPeak = Math.min(numPeaks, Math.ceil((clip.offset + clip.duration) * peaksPerSec))
+  if (endPeak <= startPeak) return undefined
+  return assetPeaks.subarray(startPeak * 2, endPeak * 2)
 }
 
 const EMPTY_PEAKS = new Float32Array(0)

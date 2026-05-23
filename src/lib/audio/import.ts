@@ -3,7 +3,7 @@ import { ensureRunning, getAudioContext } from './engine'
 import { encodeWav } from './wav-encoder'
 import { useAssetStore } from '@/lib/state/asset-store'
 import type { AudioAsset } from '@/lib/types'
-import { buildPeaks } from '@/lib/utils/audio-math'
+import { buildPeaks, buildPeaksMinMax } from '@/lib/utils/audio-math'
 
 /**
  * Import an external audio file (WAV / MP3 / AIFF / FLAC / etc.) into the
@@ -30,6 +30,7 @@ export async function importAudioFile(file: File): Promise<AudioAsset> {
 
   const sampleRate = audioBuffer.sampleRate as 44100 | 48000
   const peaks = buildPeaks(stereo, sampleRate)
+  const peaksMinMax = buildPeaksMinMax(stereo, sampleRate)
   const wav = encodeWav({ channels: stereo, sampleRate, bitDepth: 32 })
 
   const asset: AudioAsset = {
@@ -39,6 +40,7 @@ export async function importAudioFile(file: File): Promise<AudioAsset> {
     sampleRate,
     channels: 2,
     peaks,
+    peaksMinMax,
     createdAt: Date.now(),
     sourceDevice: 'Imported',
   }

@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-05-23 — Session 8: feel
+
+### Added
+
+- **Smoother playhead**: visual playhead now extrapolates between Tone.Transport ticks using `performance.now()` deltas, re-anchoring every 100 ms so drift can't accumulate. Glides instead of stepping at low zoom.
+- **Richer waveforms**: assets now store an optional `peaksMinMax` interleaved `[min, max]` array (built at record / import / bounce time, same ~100 Hz rate as the RMS peaks). MiniWaveform prefers it when present so waveforms show the real signal shape (asymmetric clipping, attack transients) instead of a mirrored RMS envelope. Existing assets without the field render via the original RMS fallback unchanged.
+- **First-launch onboarding**: bottom-left welcome card lists the three quick wins (pick input → record → drop on timeline). Shown once via `localStorage` flag.
+- **PWA install banner**: captures `beforeinstallprompt`; offers a one-click install when the browser hosts the prompt. Dismissal is remembered.
+
 ## [1.11.0] — 2026-05-23 — Session 7: snapshots
 
 ### Added

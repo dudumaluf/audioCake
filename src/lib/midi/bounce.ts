@@ -5,7 +5,7 @@ import { sendNoteOff, sendNoteOn } from './engine'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useProjectStore } from '@/lib/state/project-store'
 import type { AudioAsset, Clip, MidiAsset } from '@/lib/types'
-import { buildPeaks } from '@/lib/utils/audio-math'
+import { buildPeaks, buildPeaksMinMax } from '@/lib/utils/audio-math'
 
 /**
  * Bounce a MIDI clip to audio by:
@@ -115,6 +115,7 @@ export async function bounceMidiClip(opts: BounceOptions): Promise<string> {
 
   const stereo = upmixToStereo(channels)
   const peaks = buildPeaks(stereo, sampleRate)
+  const peaksMinMax = buildPeaksMinMax(stereo, sampleRate)
   const wav = encodeWav({ channels: stereo, sampleRate, bitDepth: 32 })
   const assetId = ulid()
   const asset: AudioAsset = {
@@ -124,6 +125,7 @@ export async function bounceMidiClip(opts: BounceOptions): Promise<string> {
     sampleRate: sampleRate === 44100 ? 44100 : 48000,
     channels: 2,
     peaks,
+    peaksMinMax,
     createdAt: Date.now(),
     sourceDevice: 'MIDI bounce',
   }

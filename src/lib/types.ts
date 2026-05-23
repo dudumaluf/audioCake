@@ -26,6 +26,12 @@ export interface AudioAsset {
   channels: 1 | 2
   /** RMS peaks at ~100 samples per second, mono-summed. -1..1 floats. */
   peaks: Float32Array
+  /**
+   * Optional min/max peaks at the same rate, interleaved as
+   * `[min0, max0, min1, max1, ...]`. Renderers prefer this when present
+   * for a richer waveform; absent on assets from before session 8.
+   */
+  peaksMinMax?: Float32Array
   createdAt: number
   /** Optional source-device label (e.g. "Roland S-1"). */
   sourceDevice?: string

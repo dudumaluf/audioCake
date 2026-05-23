@@ -6,7 +6,7 @@ import { ulid } from 'ulid'
 import { deleteRecoveryBlob, listRecoveryEntries, readRecoveryBlob } from '@/lib/storage/opfs'
 import { useAssetStore } from '@/lib/state/asset-store'
 import type { AudioAsset } from '@/lib/types'
-import { buildPeaks } from '@/lib/utils/audio-math'
+import { buildPeaks, buildPeaksMinMax } from '@/lib/utils/audio-math'
 
 /**
  * Scan OPFS `recovery/` on app boot. If any sessions exist (because a
@@ -75,6 +75,7 @@ async function recover(sessionId: string, lastModified: number): Promise<void> {
     void ac.close()
 
     const peaks = buildPeaks(channels, buffer.sampleRate)
+    const peaksMinMax = buildPeaksMinMax(channels, buffer.sampleRate)
     const id = ulid()
     const asset: AudioAsset = {
       id,
@@ -83,6 +84,7 @@ async function recover(sessionId: string, lastModified: number): Promise<void> {
       sampleRate: buffer.sampleRate === 44100 ? 44100 : 48000,
       channels: channels.length === 1 ? 1 : 2,
       peaks,
+      peaksMinMax,
       createdAt: Date.now(),
       sourceDevice: 'Recovered',
     }

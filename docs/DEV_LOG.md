@@ -659,3 +659,33 @@ Session 7: snapshots — branchable save points.
 ### Next
 
 Session 8: feel — smoother playhead, better waveforms, onboarding.
+
+---
+
+## 2026-05-23 — Session 8: feel polish (and end of the polish + evolution plan)
+
+### Done
+
+- **Smoother playhead** in `usePlaybackEngine`. The rAF loop now keeps a `baseWallMs` + `baseTransport` pair. Each frame: if it's been < 100 ms since the last re-sync, set playhead to `baseTransport + (now - baseWallMs) / 1000`; otherwise read `getTransportTime()` and re-anchor. Net effect: the playhead glides at sub-frame resolution while staying tied to the real audio clock.
+- **MinMax peaks**: new `buildPeaksMinMax()` in `audio-math.ts` produces an interleaved Float32Array (`[min0, max0, min1, max1, ...]`). `AudioAsset.peaksMinMax?` is the new optional field; IDB round-trips it (no schema bump — Dexie just stores the extra property). All four asset creation paths (record, import, bounce, crash recover) now build both flavours.
+- **MiniWaveform** prefers `peaksMinMax` when present: each pixel maps to (lo, hi) and we fill the rect from `mid - hi*mid` to `mid - lo*mid`. Asymmetric attacks finally look asymmetric instead of mirrored. Old assets without the field fall through to the prior RMS render so nothing breaks.
+- **ClipBlock** has a parallel `useVisiblePeaksMinMax` hook that slices the interleaved array by `[startPeak*2, endPeak*2]` and forwards to MiniWaveform.
+- **Onboarding** component combines the first-launch welcome hint + the PWA install banner. Welcome: bottom-left card with a three-bullet quick-start; shows once, dismissible. Install: captures `beforeinstallprompt`, shows a card with Install + Not now buttons; both decisions remembered via localStorage so the user is never nagged.
+
+### Notes
+
+- I considered a bigger waveform overhaul (proper LOD pyramid, multi-resolution peaks for zoom) but kept it scoped to min/max — biggest aesthetic win for the smallest code surface, matches the "polish first" direction.
+- The PWA banner only fires on browsers that emit `beforeinstallprompt` (Chrome / Edge / Brave). Safari + Firefox stay silent, which is the right behaviour — those browsers don't have a JS-driven install affordance.
+- The playhead extrapolation is unconditional — works for both linear and looped playback because re-sync every 100 ms catches the loop jump cleanly.
+
+### Verify
+
+- [x] format / lint / build green.
+- [ ] Manual: play, look at playhead at low zoom — glides smoothly.
+- [ ] Manual: record a new take with a hard attack (e.g. drum hit) — waveform shows the asymmetric shape.
+- [ ] Manual: clear localStorage + reload — welcome card appears bottom-left; dismiss → never again this session.
+- [ ] Manual on Chrome: install banner offers Install.
+
+### End of plan
+
+That closes the "AudioCake polish + evolution" plan (sessions 1–8). Future sessions become regular ROADMAP items: audio quantize, punch recording, piano-roll improvements, PWA verification, project notes editor. All explicitly-cut items (cloud sync, .als export, share URLs) stay cut.

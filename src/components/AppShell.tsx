@@ -5,6 +5,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Inspector } from '@/components/inspector/Inspector'
 import { Library } from '@/components/library/Library'
 import { Mixer } from '@/components/mixer/Mixer'
+import { Onboarding } from '@/components/Onboarding'
 import { StorageBanner } from '@/components/StorageBanner'
 import { Timeline } from '@/components/timeline/Timeline'
 import { Topbar } from '@/components/topbar/Topbar'
@@ -134,6 +135,7 @@ export function AppShell() {
         </ResizablePanelGroup>
       </div>
       <StorageBanner />
+      <Onboarding />
     </div>
   )
 }

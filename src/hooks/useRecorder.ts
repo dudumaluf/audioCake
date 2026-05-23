@@ -16,7 +16,7 @@ import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
 import { getStorageEstimate, requestPersistentStorage } from '@/lib/storage/opfs'
 import type { AudioAsset, Clip } from '@/lib/types'
-import { buildPeaks } from '@/lib/utils/audio-math'
+import { buildPeaks, buildPeaksMinMax } from '@/lib/utils/audio-math'
 
 export type RecorderState = 'idle' | 'monitoring' | 'count-in' | 'recording' | 'saving'
 
@@ -130,6 +130,7 @@ export function useRecorder() {
         const { channels, sampleRate, durationSec } = await session.stop()
         const stereo = upmixToStereo(channels)
         const peaks = buildPeaks(stereo, sampleRate)
+        const peaksMinMax = buildPeaksMinMax(stereo, sampleRate)
         const id = ulid()
         const blob = encodeWav({ channels: stereo, sampleRate, bitDepth: 32 })
 
@@ -140,6 +141,7 @@ export function useRecorder() {
           sampleRate: sampleRate === 44100 ? 44100 : 48000,
           channels: 2,
           peaks,
+          peaksMinMax,
           createdAt: Date.now(),
           sourceDevice: selectedInputLabel ?? undefined,
         }
