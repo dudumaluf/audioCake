@@ -4,6 +4,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-05-23 — Session 4: data safety
+
+### Added
+
+- **Crash recovery**: while recording, the audio is encoded as 32-bit float WAV and flushed to OPFS at `recovery/<sessionId>.wav` every 5 s. On clean stop the file is deleted; on a crash the file remains and a persistent toast on the next app launch offers "Recover" or "Discard" per stranded session.
+- **Storage soft-cap banner**: a bottom-right toast appears when OPFS usage crosses 500 MB, and switches to a stronger red treatment past 1 GB. Polls `navigator.storage.estimate()` once on mount and every minute thereafter. Dismissal is sticky until usage grows by another 100 MB.
+- **Hard cap at 1 GB**: `startCapture` checks the storage estimate before opening a new recording session; refuses with a toast if usage is over 1 GB so the user doesn't run out of quota mid-take.
+- **Autosave indicator in topbar**: shows `Saved 5 s ago` (relative timestamp refreshed every 15 s), `Saving…`, or `Unsaved changes` with a tinted icon (check / cloud-upload / pencil). Backed by a small zustand store (`useAutosaveStore`) the `useAutosave` hook writes to during its lifecycle.
+
 ## [1.7.0] — 2026-05-23 — Session 3: interaction polish
 
 ### Changed

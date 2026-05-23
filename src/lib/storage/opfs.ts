@@ -11,6 +11,7 @@
  */
 
 const AUDIO_DIR = 'audio'
+const RECOVERY_DIR = 'recovery'
 
 let rootHandlePromise: Promise<FileSystemDirectoryHandle> | null = null
 
@@ -84,4 +85,68 @@ export async function getStorageEstimate(): Promise<StorageEstimate | null> {
   } catch {
     return null
   }
+}
+
+// ---- Crash-recovery helpers ----
+//
+// In-progress recordings are flushed to `recovery/<sessionId>.wav` while
+// the recorder is running. On normal stop we delete that file; on a
+// crash + relaunch, the file remains and we offer to recover it.
+
+export interface RecoveryEntry {
+  sessionId: string
+  /** Bytes — useful to show "recover a 4.2 MB take" rather than just an id. */
+  size: number
+  /** Last-modified ms epoch. */
+  lastModified: number
+}
+
+export async function writeRecoveryBlob(sessionId: string, blob: Blob): Promise<void> {
+  const dir = await getDir(RECOVERY_DIR)
+  const file = await dir.getFileHandle(`${sessionId}.wav`, { create: true })
+  const writable = await file.createWritable()
+  await writable.write(blob)
+  await writable.close()
+}
+
+export async function readRecoveryBlob(sessionId: string): Promise<Blob | null> {
+  const dir = await getDir(RECOVERY_DIR)
+  try {
+    const handle = await dir.getFileHandle(`${sessionId}.wav`)
+    return handle.getFile()
+  } catch {
+    return null
+  }
+}
+
+export async function deleteRecoveryBlob(sessionId: string): Promise<void> {
+  const dir = await getDir(RECOVERY_DIR)
+  try {
+    await dir.removeEntry(`${sessionId}.wav`)
+  } catch {
+    /* already gone */
+  }
+}
+
+export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
+  const dir = await getDir(RECOVERY_DIR)
+  const out: RecoveryEntry[] = []
+  // FileSystemDirectoryHandle implements an async iterator returning
+  // [name, handle] tuples; iterate it directly.
+  // @ts-expect-error: TS lib for OPFS doesn't model the iterator yet.
+  for await (const [name, handle] of dir.entries()) {
+    if (!name.endsWith('.wav')) continue
+    if (handle.kind !== 'file') continue
+    try {
+      const file = await (handle as FileSystemFileHandle).getFile()
+      out.push({
+        sessionId: name.replace(/\.wav$/, ''),
+        size: file.size,
+        lastModified: file.lastModified,
+      })
+    } catch {
+      /* skip */
+    }
+  }
+  return out
 }

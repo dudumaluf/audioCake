@@ -532,3 +532,35 @@ Session 3: interaction polish — better MIDI track headers, right-click context
 ### Next
 
 Session 4: data safety — periodic OPFS flush for crash recovery, storage soft-cap warning, autosave indicator.
+
+---
+
+## 2026-05-23 — Session 4: data safety
+
+### Done
+
+- **Recovery helpers in OPFS** (`writeRecoveryBlob`, `readRecoveryBlob`, `deleteRecoveryBlob`, `listRecoveryEntries`). The list helper uses `dir.entries()` async iterator with a small `@ts-expect-error` because the OPFS TS lib still doesn't model it.
+- **Recorder periodic flush** (`startRecording` gains `options.recoverySessionId`). Every 5 s, the accumulated chunks are encoded as 32-bit float WAV and written to OPFS. `assembleChannels()` extracted so both the flush and the final stop reuse the same concat logic. Clean stop deletes the file.
+- **useCrashRecovery hook**: scans `recovery/` on mount; for each stranded session, raises a persistent (`duration: Infinity`) sonner toast with `Recover` + `Discard` actions. Recover decodes the WAV via a fresh `AudioContext`, builds peaks, adds an AudioAsset, then deletes the recovery file.
+- **StorageBanner**: polls `navigator.storage.estimate()` on mount + every 60 s. Shows a fixed bottom-right card past 500 MB (primary tint), past 1 GB (destructive tint). Dismiss is sticky until +100 MB.
+- **Hard 1 GB cap on new recordings**: `startCapture` calls `getStorageEstimate` and refuses with a toast if usage exceeds 1 GB.
+- **Autosave indicator**: new `useAutosaveStore` (status: 'saved'|'pending'|'saving', lastSavedAt). `useAutosave` flips status through pending → saving → saved (or back to pending if dirtyTick moved during the IDB write). New `AutosaveIndicator` component in topbar — icon + "Saved N s ago" / "Saving…" / "Unsaved changes". Label hidden under `md` breakpoint to save horizontal room.
+
+### Notes
+
+- The recovery WAV is 32-bit float (lossless) so a recovered take has the exact same fidelity as a clean stop would have produced. Storage cost is ~11.5 MB/min stereo @ 48 k — fine for 5 s flush cycles.
+- Once-per-second flush would feel safer, but 5 s is the sweet spot: small enough that you lose almost nothing, big enough that the IDB+OPFS write doesn't tax the recording thread on slow machines.
+- The autosave indicator's "now" timestamp lives in component state via `useState(() => Date.now())` and is refreshed every 15 s. React 19 Compiler considers `Date.now()` impure during render, so we lift it to state.
+- `useAutosave` uses `queueMicrotask(() => setStatus('pending'))` for the initial dirty signal to satisfy the React 19 lint about setting state in effects.
+
+### Verify
+
+- [x] format / lint / build green.
+- [ ] Manual: open dev tools → Application → Storage → see `recovery/` populated mid-record, gone after clean stop.
+- [ ] Manual: record → kill the tab → reopen → "Unsaved take from …" toast → Recover → asset in Library.
+- [ ] Manual: edit a clip → autosave indicator says "Saving…" for ~5 s, then "Saved just now".
+- [ ] Manual: synthetically: pump OPFS use past 500 MB by importing big WAVs — banner appears.
+
+### Next
+
+Session 5: take folders. The first new workflow capability — record N takes onto the same spot, pick the best later. Big lift; will be its own commit.

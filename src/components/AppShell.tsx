@@ -5,12 +5,14 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/componen
 import { Inspector } from '@/components/inspector/Inspector'
 import { Library } from '@/components/library/Library'
 import { Mixer } from '@/components/mixer/Mixer'
+import { StorageBanner } from '@/components/StorageBanner'
 import { Timeline } from '@/components/timeline/Timeline'
 import { Topbar } from '@/components/topbar/Topbar'
 import { usePlaybackEngine } from '@/hooks/usePlaybackEngine'
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts'
 import { useUndoRedo } from '@/hooks/useUndoRedo'
 import { useAutosave } from '@/hooks/useAutosave'
+import { useCrashRecovery } from '@/hooks/useCrashRecovery'
 import { useMidiRecorder } from '@/hooks/useMidiRecorder'
 import { useProjectStore } from '@/lib/state/project-store'
 import { useTransportStore } from '@/lib/state/transport-store'
@@ -31,6 +33,7 @@ export function AppShell() {
   useAutosave()
   useMidiRecorder()
   useBootstrapProject()
+  useCrashRecovery()
 
   // Stable handler object so the shortcut effect doesn't re-bind every render.
   const handlers = useMemo(
@@ -130,6 +133,7 @@ export function AppShell() {
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+      <StorageBanner />
     </div>
   )
 }

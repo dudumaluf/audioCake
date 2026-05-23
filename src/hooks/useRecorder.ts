@@ -12,7 +12,7 @@ import {
 import { encodeWav } from '@/lib/audio/wav-encoder'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useIOStore } from '@/lib/state/io-store'
-import { requestPersistentStorage } from '@/lib/storage/opfs'
+import { getStorageEstimate, requestPersistentStorage } from '@/lib/storage/opfs'
 import type { AudioAsset } from '@/lib/types'
 import { buildPeaks } from '@/lib/utils/audio-math'
 
@@ -96,9 +96,29 @@ export function useRecorder() {
     const stream = streamRef.current
     if (!stream) return
 
+    // Hard cap: refuse a new capture if OPFS is already past 1 GB so we
+    // don't fill up the user's quota and silently start losing data
+    // mid-take. The StorageBanner has already been nagging since 500 MB.
+    try {
+      const est = await getStorageEstimate()
+      if (est && est.usageBytes >= 1024 * 1024 * 1024) {
+        toast.error('Storage full', {
+          description:
+            'AudioCake is using over 1 GB of browser storage. Delete some recordings or export + remove old projects before recording more.',
+        })
+        return
+      }
+    } catch {
+      /* if estimate fails we err on the side of letting the user record */
+    }
+
     const begin = async () => {
       setState('recording')
-      const session = await startRecording(stream)
+      // Use a fresh recovery session id per take. The recorder will flush
+      // every 5s; on clean stop it deletes the file, on a crash the file
+      // remains and the boot flow offers to recover it.
+      const recoverySessionId = ulid()
+      const session = await startRecording(stream, { recoverySessionId })
       stopRecordRef.current = async () => {
         setState('saving')
         const { channels, sampleRate, durationSec } = await session.stop()

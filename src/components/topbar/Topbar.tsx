@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { LevelMeter } from '@/components/io/LevelMeter'
 import { DevicePicker } from '@/components/io/DevicePicker'
 import { ExportDialog } from './ExportDialog'
+import { AutosaveIndicator } from './AutosaveIndicator'
 import { ProjectSwitcher } from './ProjectSwitcher'
 import { TapTempo } from './TapTempo'
 import { useRecorder } from '@/hooks/useRecorder'
@@ -59,6 +60,7 @@ export function Topbar({ onPlay, onPause, onStop }: TopbarProps) {
           title={isRecording ? 'Recording' : isCountIn ? 'Count-in…' : 'AudioCake'}
         />
         <ProjectSwitcher />
+        <AutosaveIndicator />
       </div>
 
       <div className="bg-border/80 h-6 w-px shrink-0" />
