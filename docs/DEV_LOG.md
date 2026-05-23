@@ -601,3 +601,32 @@ Session 5: take folders. The first new workflow capability — record N takes on
 ### Next
 
 Session 6: stem export.
+
+---
+
+## 2026-05-23 — Session 6: stem export
+
+### Done
+
+- **Exporter refactor**: extracted the offline-render-then-decode core into a new `renderToChannels(tracks, clips, opts)` function shared by both `renderAndExport` (full mix) and the new `renderStems` (per-track). Both paths now build the same offline graph (limiter, reverb, delay, per-track channels with EQ/compressor/sends) so a stem is bit-identical to the corresponding solo'd track.
+- **`renderStems`** iterates audio tracks; for each, builds a `soloView = tracks.map(t => t.id === target.id ? t : {...t, mute:true})`, calls `renderToChannels` with that view, and returns `{ track, channels }[]`. Progress callback is spread across the whole run rather than restarting per stem.
+- **ExportDialog**: new "Export stems" switch. On enable, the export pipeline becomes mix → stems → zip:
+  - Render mix (0–50% progress)
+  - Render N stems (50–90% progress, evenly distributed)
+  - Zip everything via JSZip (90–100% via `generateAsync` reporting)
+  - Download as `<filename>-stems.zip`
+- `encodeStemChannels()` helper inlined inside ExportDialog mirrors the format dispatch in `exporter.encode()` so each stem encodes individually before being added to the zip — gives us per-track size feedback for free if we ever want it.
+
+### Notes
+
+- Stems honour FX settings the same way the mix does (reverb, delay live on master, not per-track). If you want a "dry stem" feature later, drop the master sends in the render-only context for stems.
+- Track names sanitized with `sanitizeFilename` to avoid weird zip entries.
+
+### Verify
+
+- [x] format / lint / build green.
+- [ ] Manual: load a project with 3 tracks, hit Export → enable Stems → choose MP3 → save → unzip → see `mix.mp3` + 3 `stems/<name>.mp3`. Each stem plays the isolated track audio.
+
+### Next
+
+Session 7: snapshots — branchable save points.

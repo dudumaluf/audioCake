@@ -21,7 +21,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { renderAndExport, type ExportFormat, type ExportOptions } from '@/lib/audio/exporter'
+import JSZip from 'jszip'
+import {
+  renderAndExport,
+  renderStems,
+  type ExportFormat,
+  type ExportOptions,
+} from '@/lib/audio/exporter'
+import { encodeMp3 } from '@/lib/audio/encoders/mp3'
+import { encodeWebCodecs } from '@/lib/audio/encoders/webcodecs'
+import { encodeWav } from '@/lib/audio/wav-encoder'
 import { useProjectStore } from '@/lib/state/project-store'
 
 interface ExportDialogProps {
@@ -48,6 +57,7 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
   const [bitrateKbps, setBitrateKbps] = useState(192)
   const [wavBitDepth, setWavBitDepth] = useState<16 | 24>(16)
   const [normalize, setNormalize] = useState(true)
+  const [exportStems, setExportStems] = useState(false)
   const [filename, setFilename] = useState(sanitize(projectName) || 'audiocake-mix')
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState(0)
@@ -88,30 +98,92 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
     setProgress(0)
     setStage('render')
     try {
-      const options: ExportOptions = {
-        format,
-        sampleRate,
-        normalize,
-        bitrateKbps,
-        bitDepth: wavBitDepth,
-        bpm,
-        fx,
-        onProgress: (frac, s) => {
-          setProgress(frac)
-          setStage(s)
-        },
+      if (exportStems) {
+        await handleExportStems()
+      } else {
+        await handleExportMix()
       }
-      const result = await renderAndExport(tracks, clips, options)
-      downloadBlob(result.blob, `${filename || 'audiocake-mix'}.${result.extension}`)
-      toast.success('Export complete', {
-        description: `${filename}.${result.extension}`,
-      })
       onOpenChange(false)
     } catch (e) {
       toast.error('Export failed', { description: (e as Error).message })
     } finally {
       setRunning(false)
     }
+  }
+
+  const handleExportMix = async () => {
+    const options: ExportOptions = {
+      format,
+      sampleRate,
+      normalize,
+      bitrateKbps,
+      bitDepth: wavBitDepth,
+      bpm,
+      fx,
+      onProgress: (frac, s) => {
+        setProgress(frac)
+        setStage(s)
+      },
+    }
+    const result = await renderAndExport(tracks, clips, options)
+    downloadBlob(result.blob, `${filename || 'audiocake-mix'}.${result.extension}`)
+    toast.success('Export complete', {
+      description: `${filename}.${result.extension}`,
+    })
+  }
+
+  // Render mix + one stem per audio track, then bundle them into a zip
+  // so the user gets a single download.
+  const handleExportStems = async () => {
+    const baseOptions: ExportOptions = {
+      format,
+      sampleRate,
+      normalize,
+      bitrateKbps,
+      bitDepth: wavBitDepth,
+      bpm,
+      fx,
+    }
+    // Split overall progress into [0..0.5] mix render, [0.5..0.9] stems
+    // render, [0.9..1] encoding+zipping so the bar reads as cumulative
+    // work rather than restarting per item.
+    setStage('render')
+    const mixResult = await renderAndExport(tracks, clips, {
+      ...baseOptions,
+      onProgress: (frac) => setProgress(frac * 0.5),
+    })
+
+    const stems = await renderStems(tracks, clips, {
+      ...baseOptions,
+      onProgress: (frac) => setProgress(0.5 + frac * 0.4),
+    })
+
+    setStage('encode')
+    setProgress(0.9)
+    const zip = new JSZip()
+    const baseFilename = filename || 'audiocake-mix'
+    zip.file(`${baseFilename}.${mixResult.extension}`, mixResult.blob)
+    const stemsDir = zip.folder('stems')!
+    for (const s of stems) {
+      const stemBlob = await encodeStemChannels(s.channels, sampleRate, {
+        format,
+        bitrateKbps,
+        bitDepth: wavBitDepth,
+      })
+      stemsDir.file(
+        `${sanitizeFilename(s.track.name) || s.track.id}.${mixResult.extension}`,
+        stemBlob.blob,
+      )
+    }
+    const zipBlob = await zip.generateAsync({ type: 'blob' }, (meta) => {
+      // generateAsync also reports its own progress; map it into [0.9..1].
+      setProgress(0.9 + (meta.percent / 100) * 0.1)
+    })
+    setProgress(1)
+    downloadBlob(zipBlob, `${baseFilename}-stems.zip`)
+    toast.success('Stems exported', {
+      description: `Mix + ${stems.length} stem${stems.length === 1 ? '' : 's'} in zip`,
+    })
   }
 
   return (
@@ -201,6 +273,16 @@ export function ExportDialog({ open, onOpenChange }: ExportDialogProps) {
             <Switch checked={normalize} onCheckedChange={setNormalize} />
           </label>
 
+          <label className="flex items-center justify-between text-sm">
+            <div className="flex flex-col">
+              <span>Export stems</span>
+              <span className="text-muted-foreground text-[10px]">
+                Bundle mix + one file per audio track in a zip.
+              </span>
+            </div>
+            <Switch checked={exportStems} onCheckedChange={setExportStems} />
+          </label>
+
           <div className="text-muted-foreground flex items-center justify-between text-[11px]">
             <span>Estimated size</span>
             <span className="font-mono-num text-foreground">
@@ -259,4 +341,38 @@ function downloadBlob(blob: Blob, filename: string): void {
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+/** File-safe variant: looser than `sanitize()` because we accept any
+ *  character that's legal in a zip entry path. */
+function sanitizeFilename(s: string): string {
+  return s.replace(/[\/\\:*?"<>|]/g, '_').slice(0, 80)
+}
+
+/** Encode a stem's raw channels with the same format as the mix.
+ *  Mirrors the `encode()` helper inside `exporter.ts` but inlined here
+ *  so each stem can be encoded individually before being zipped. */
+async function encodeStemChannels(
+  channels: Float32Array[],
+  sampleRate: number,
+  opts: { format: ExportFormat; bitrateKbps: number; bitDepth: 16 | 24 },
+): Promise<{ blob: Blob }> {
+  switch (opts.format) {
+    case 'wav':
+      return { blob: encodeWav({ channels, sampleRate, bitDepth: opts.bitDepth }) }
+    case 'mp3':
+      return {
+        blob: await encodeMp3({ channels, sampleRate, bitrateKbps: opts.bitrateKbps }),
+      }
+    case 'aac':
+    case 'opus':
+      return {
+        blob: await encodeWebCodecs({
+          channels,
+          sampleRate,
+          codec: opts.format,
+          bitrateKbps: opts.bitrateKbps,
+        }),
+      }
+  }
 }

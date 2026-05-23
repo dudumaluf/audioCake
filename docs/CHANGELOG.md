@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-05-23 — Session 6: stem export
+
+### Added
+
+- **Export stems** toggle in the Export dialog. Renders the master mix plus one isolated file per audio track (each mute-everything-but-this rendered through the full FX chain) and bundles them into a zip: `<filename>.<ext>` at the root, `stems/<track-name>.<ext>` per track. Works with all four export formats (MP3 / AAC / WAV / Opus). Progress bar splits work as: 0–50% mix, 50–90% stems, 90–100% zipping.
+
+### Changed
+
+- Refactored `exporter.ts` to extract a shared `renderToChannels()` core used by both the full mix path and the new `renderStems()` function, so both renders share identical FX wiring and per-track signal flow without code duplication.
+
 ## [1.9.0] — 2026-05-23 — Session 5: take folders / comping
 
 ### Added

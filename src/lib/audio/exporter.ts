@@ -45,17 +45,87 @@ export async function renderAndExport(
   const { normalize, onProgress } = options
   const sampleRate = options.sampleRate ?? 48_000
 
-  // Audio clips only for offline render (MIDI clips don't produce audio
-  // unless bounced to audio first — see bounceMidiClip).
-  // Take folders: skip non-active siblings (treat undefined as active for
-  // back-compat with projects pre-take-folders).
+  const channels = await renderToChannels(tracks, clips, {
+    sampleRate,
+    fx: options.fx,
+    bpm: options.bpm,
+    normalize,
+    onRenderProgress: (frac) => onProgress?.(frac * 0.65, 'render'),
+  })
+
+  const encoded = await encode(channels, sampleRate, options, (frac) =>
+    onProgress?.(0.65 + frac * 0.35, 'encode'),
+  )
+  onProgress?.(1, 'encode')
+
+  return encoded
+}
+
+/**
+ * Render the project to one mix per audio track. Each track is rendered
+ * in isolation by muting every other track in the graph, then the
+ * remaining tracks behave as if they were soloed — so each stem captures
+ * EQ + compressor + sends + master limiter exactly as if you'd soloed
+ * that track and bounced.
+ *
+ * Returns `{ track, channels }[]` so the caller can encode and package
+ * however it wants (typically zip alongside the mix).
+ */
+export async function renderStems(
+  tracks: Track[],
+  clips: Clip[],
+  options: ExportOptions,
+): Promise<Array<{ track: Track; channels: Float32Array[] }>> {
+  const { normalize, onProgress } = options
+  const sampleRate = options.sampleRate ?? 48_000
+  const audibleTracks = tracks.filter((t) => t.kind === 'audio')
+  const results: Array<{ track: Track; channels: Float32Array[] }> = []
+
+  for (let i = 0; i < audibleTracks.length; i++) {
+    const t = audibleTracks[i]!
+    // Build a tracks array where everyone else is muted. We don't touch
+    // the original `tracks` array; the offline graph receives this view.
+    const soloView = tracks.map((tk) => (tk.id === t.id ? tk : { ...tk, mute: true }))
+    const stemChannels = await renderToChannels(soloView, clips, {
+      sampleRate,
+      fx: options.fx,
+      bpm: options.bpm,
+      normalize,
+      onRenderProgress: (frac) => {
+        // Spread per-track progress across the full bar so the UI fills
+        // smoothly from 0 → 1 over the whole stem run.
+        const localProgress = (i + frac) / audibleTracks.length
+        onProgress?.(localProgress, 'render')
+      },
+    })
+    results.push({ track: t, channels: stemChannels })
+  }
+  return results
+}
+
+/**
+ * Shared offline-render core used by both the full mix export and the
+ * per-track stem renders. Builds the FX graph (limiter + reverb +
+ * delay), instantiates per-track channels + EQ + compressor + sends,
+ * decodes and schedules all audio clips, runs the offline context,
+ * and returns the rendered channels (optionally normalised).
+ */
+async function renderToChannels(
+  tracks: Track[],
+  clips: Clip[],
+  opts: {
+    sampleRate: number
+    fx?: import('@/lib/types').FxSettings
+    bpm?: number
+    normalize?: boolean
+    onRenderProgress?: (frac: number) => void
+  },
+): Promise<Float32Array[]> {
+  // Audio clips only; non-active take siblings are filtered out.
   const audioClips = clips.filter(
     (c) => c.kind === 'audio' && (!c.takeGroupId || c.isActiveTake !== false),
   )
 
-  // Compute the project length: end of the last clip, with a tiny tail to
-  // avoid clipping a fade-out. Account for clip timeStretch (>1 makes
-  // it shorter, <1 makes it longer).
   const lengthSec =
     audioClips.reduce((m, c) => {
       const stretchedDur = c.duration / (c.timeStretch || 1)
@@ -64,34 +134,24 @@ export async function renderAndExport(
   if (lengthSec <= 0.25) {
     throw new Error('No clips to export')
   }
-  const lengthFrames = Math.ceil(lengthSec * sampleRate)
+  const lengthFrames = Math.ceil(lengthSec * opts.sampleRate)
 
-  // We use Tone in the offline context too so the live engine's effects
-  // (EQ, compressor, limiter, reverb/delay returns) can be reused without
-  // re-implementing each one in raw Web Audio. setContext swaps Tone's
-  // global context to the offline one for the duration of this render.
   const Tone = await import('tone')
   const previousCtx = Tone.getContext()
   const offlineCtx = new OfflineAudioContext({
     numberOfChannels: 2,
     length: lengthFrames,
-    sampleRate,
+    sampleRate: opts.sampleRate,
   })
   Tone.setContext(offlineCtx as unknown as Parameters<typeof Tone.setContext>[0])
-
-  // Register SoundTouch in the offline context (no-op if any clip has
-  // neutral stretch / pitch; cheap if some do).
   await registerSoundTouch(offlineCtx)
   const ctx: BaseAudioContext = offlineCtx
 
-  // Master chain: limiter feeding directly to offline destination.
   const masterLimiter = new Tone.Limiter(-0.3)
   masterLimiter.toDestination()
 
-  // Global FX returns. Settings come from the project (reverb decay/wet,
-  // delay div/feedback/wet) so the exported mix matches what the user hears.
-  const fx = options.fx ?? DEFAULT_FX_SETTINGS
-  const exportBpm = options.bpm ?? 120
+  const fx = opts.fx ?? DEFAULT_FX_SETTINGS
+  const exportBpm = opts.bpm ?? 120
 
   const reverbWet = fx.reverb.wetDb <= -60 ? 0 : Math.pow(10, fx.reverb.wetDb / 20)
   const reverb = new Tone.Reverb({
@@ -99,9 +159,6 @@ export async function renderAndExport(
     preDelay: fx.reverb.preDelayMs / 1000,
     wet: reverbWet,
   })
-  // Reverb needs its IR generated before the offline render begins,
-  // otherwise the wet send will be silent. Tone awaits this on first use,
-  // but it's clearer to force it explicitly.
   await reverb.generate()
 
   const delayWet = fx.delay.wetDb <= -60 ? 0 : Math.pow(10, fx.delay.wetDb / 20)
@@ -117,7 +174,6 @@ export async function renderAndExport(
   reverb.connect(masterLimiter)
   delay.connect(masterLimiter)
 
-  // Solo logic mirrors the live engine.
   const anySoloed = tracks.some((t) => t.solo)
   const trackNodes = new Map<string, AudioNode>()
   for (const t of tracks) {
@@ -220,35 +276,23 @@ export async function renderAndExport(
     source.start(c.startTime, c.offset, c.duration)
   }
 
-  // OfflineAudioContext doesn't natively report rendering progress, so we
-  // emit two coarse stages: render-start, render-done.
-  onProgress?.(0.05, 'render')
+  opts.onRenderProgress?.(0.05)
   let rendered: AudioBuffer
   try {
     rendered = await offlineCtx.startRendering()
   } finally {
-    // Always restore Tone's main-thread context so subsequent live
-    // playback isn't pointing at the disposed offline context.
     Tone.setContext(previousCtx)
   }
-  onProgress?.(0.65, 'render')
+  opts.onRenderProgress?.(1)
 
-  // Extract de-interleaved channels for the encoder.
   let channels: Float32Array[] = []
   for (let c = 0; c < rendered.numberOfChannels; c++) {
     channels.push(rendered.getChannelData(c).slice())
   }
-
-  if (normalize) {
+  if (opts.normalize) {
     channels = normalizeToPeakDb(channels, -1)
   }
-
-  const encoded = await encode(channels, sampleRate, options, (frac) =>
-    onProgress?.(0.65 + frac * 0.35, 'encode'),
-  )
-  onProgress?.(1, 'encode')
-
-  return encoded
+  return channels
 }
 
 async function encode(
