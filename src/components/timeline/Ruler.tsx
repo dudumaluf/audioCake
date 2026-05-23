@@ -29,11 +29,20 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
 
   const barLen = secPerBar(bpm)
   const setPlayhead = useTransportStore((s) => s.setPlayhead)
+  const playheadSec = useTransportStore((s) => s.playheadSec)
+  const isPlaying = useTransportStore((s) => s.isPlaying)
   const setLoopRegion = useProjectStore((s) => s.setLoopRegion)
   const setLoopEnabled = useProjectStore((s) => s.setLoopEnabled)
   const loopRegion = useProjectStore((s) => s.loopRegion)
   const loopEnabled = useProjectStore((s) => s.loopEnabled)
   const snap = useProjectStore((s) => s.snap)
+
+  const playheadInLoop =
+    isPlaying &&
+    loopEnabled &&
+    loopRegion !== null &&
+    playheadSec >= loopRegion.start &&
+    playheadSec < loopRegion.end
 
   const dragStartRef = useRef<{ pointerX: number; rectLeft: number; time: number } | null>(null)
   const dragMovedRef = useRef(false)
@@ -111,6 +120,10 @@ export function Ruler({ pxPerSec, bpm, durationSec }: RulerProps) {
             loopEnabled
               ? 'border-primary bg-primary/30'
               : 'border-muted-foreground/40 bg-muted-foreground/10',
+            // While transport is playing and the playhead is inside this
+            // region, pulse the background so it's obvious the loop is
+            // what's currently driving playback.
+            playheadInLoop && 'animate-loop-pulse',
           )}
           style={{
             left: loopRegion.start * pxPerSec,

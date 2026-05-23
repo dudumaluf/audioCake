@@ -159,24 +159,28 @@ export function TrackHeader({ track, height }: TrackHeaderProps) {
       </div>
 
       {track.kind === 'midi' && (
-        <div className="text-muted-foreground flex items-center gap-1 text-[9px] tracking-wider uppercase">
-          <PortPicker
+        // Two rows (IN + OUT) instead of one cramped strip: makes the
+        // routing readable in the 200px header width and lets each side
+        // have its own channel selector. Selectors tint green when a
+        // port is assigned, dimmed when not.
+        <div className="flex flex-col gap-0.5">
+          <PortRow
             label="IN"
-            value={track.midiInPortId ?? ''}
+            port={track.midiInPortId ?? ''}
+            channel={track.midiInChannel ?? 0}
             ports={midi.inputs}
             disabled={!midi.available || !midi.ready}
-            onChange={(id) => updateTrack(track.id, { midiInPortId: id || undefined })}
+            onPortChange={(id) => updateTrack(track.id, { midiInPortId: id || undefined })}
+            onChannelChange={(ch) => updateTrack(track.id, { midiInChannel: ch })}
           />
-          <PortPicker
+          <PortRow
             label="OUT"
-            value={track.midiOutPortId ?? ''}
+            port={track.midiOutPortId ?? ''}
+            channel={track.midiOutChannel ?? 0}
             ports={midi.outputs}
             disabled={!midi.available || !midi.ready}
-            onChange={(id) => updateTrack(track.id, { midiOutPortId: id || undefined })}
-          />
-          <ChannelInput
-            value={track.midiOutChannel ?? 0}
-            onChange={(ch) => updateTrack(track.id, { midiOutChannel: ch })}
+            onPortChange={(id) => updateTrack(track.id, { midiOutPortId: id || undefined })}
+            onChannelChange={(ch) => updateTrack(track.id, { midiOutChannel: ch })}
           />
         </div>
       )}
@@ -184,54 +188,60 @@ export function TrackHeader({ track, height }: TrackHeaderProps) {
   )
 }
 
-function PortPicker({
+function PortRow({
   label,
-  value,
+  port,
+  channel,
   ports,
-  onChange,
   disabled,
+  onPortChange,
+  onChannelChange,
 }: {
   label: string
-  value: string
+  port: string
+  channel: number
   ports: { id: string; name: string }[]
-  onChange: (id: string) => void
   disabled?: boolean
+  onPortChange: (id: string) => void
+  onChannelChange: (ch: number) => void
 }) {
+  const assigned = !!port
   return (
-    <label className="flex flex-1 items-center gap-1">
-      <span>{label}</span>
+    <div
+      className={cn(
+        'flex items-center gap-1 text-[9px] tracking-wider uppercase',
+        assigned ? 'text-foreground/80' : 'text-muted-foreground',
+      )}
+    >
+      <span className={cn('w-6 shrink-0', assigned && 'text-monitor')}>{label}</span>
       <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={port}
+        onChange={(e) => onPortChange(e.target.value)}
         disabled={disabled}
-        className="bg-background border-border min-w-0 flex-1 truncate rounded-sm border px-1 py-0.5 text-[10px] tracking-normal normal-case"
+        className={cn(
+          'bg-background border-border min-w-0 flex-1 truncate rounded-sm border px-1 py-0.5 text-[10px] tracking-normal normal-case',
+          assigned && 'border-monitor/40',
+        )}
       >
-        <option value="">—</option>
+        <option value="">— none —</option>
         {ports.map((p) => (
           <option key={p.id} value={p.id}>
             {p.name}
           </option>
         ))}
       </select>
-    </label>
-  )
-}
-
-function ChannelInput({ value, onChange }: { value: number; onChange: (ch: number) => void }) {
-  return (
-    <label className="flex items-center gap-1">
-      <span>CH</span>
       <input
         type="number"
         min={1}
         max={16}
-        value={value + 1}
+        value={channel + 1}
         onChange={(e) => {
           const n = Math.max(1, Math.min(16, Number.parseInt(e.target.value, 10) || 1))
-          onChange(n - 1)
+          onChannelChange(n - 1)
         }}
-        className="bg-background border-border w-9 rounded-sm border px-1 py-0.5 text-center text-[10px] tracking-normal normal-case"
+        title="MIDI channel"
+        className="bg-background border-border w-7 shrink-0 rounded-sm border px-1 py-0.5 text-center text-[10px] tracking-normal normal-case"
       />
-    </label>
+    </div>
   )
 }

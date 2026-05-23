@@ -167,6 +167,23 @@
   .animate-rec-pulse {
     animation: audiocake-rec-pulse 0.8s ease-in-out infinite;
   }
+
+  /* Soft pulse for the loop region while the playhead is inside it — a
+     gentle background brightness shift to communicate "the loop is the
+     thing playing right now". 1.2s cycle so it doesn't compete with the
+     beat. */
+  @keyframes audiocake-loop-pulse {
+    0%,
+    100% {
+      background-color: color-mix(in oklch, var(--color-primary) 25%, transparent);
+    }
+    50% {
+      background-color: color-mix(in oklch, var(--color-primary) 45%, transparent);
+    }
+  }
+  .animate-loop-pulse {
+    animation: audiocake-loop-pulse 1.2s ease-in-out infinite;
+  }
 }
 
 /* Touch best-effort: bump the click hit area of small icon buttons so the

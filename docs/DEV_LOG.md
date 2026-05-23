@@ -503,3 +503,32 @@ Session 2: FX settings dialog (reverb decay + delay division/feedback) with proj
 ### Next
 
 Session 3: interaction polish — better MIDI track headers, right-click context menu on clips, stronger drop-target feedback, loop region visible while playing.
+
+---
+
+## 2026-05-23 — Session 3: interaction polish
+
+### Done
+
+- **MIDI track header rewrite** (`TrackHeader.tsx`): replaced the single one-row IN/OUT/CH strip with two rows (IN + channel, OUT + channel). New `PortRow` subcomponent. When a port is assigned, the row label tints `text-monitor` (teal) and the select border becomes `border-monitor/40` — gives a glanceable "is this wired?" cue. MIDI track height bumped 86 → 102 px in `Timeline.tsx` to accommodate the second row.
+- **ClipContextMenu** (new): wraps each clip block in a Base UI `ContextMenu`. Trigger has `className="contents"` so it doesn't introduce a layout wrapper that would break the clip's absolute positioning. `onContextMenu` selects the clicked clip first so bulk actions act on it even if it wasn't pre-selected. Items: Rename (dialog), Duplicate, Split at playhead, Reverse (audio-only), Colour (sub-menu of swatches that re-colour the parent track for now — true per-clip colour would need a new field), Delete. Added a `Dialog` for rename since context menus can't host live inputs cleanly.
+- **TrackLane drop feedback**: `dragOver` state moved from `boolean` to `null | 'ok' | 'reject'`. `onDragOver` inspects `e.dataTransfer.types` (the only thing browsers expose during dragover, for security) to detect audio vs MIDI assets and decides compatibility with the lane's kind. Sets `dropEffect = 'none'` for incompatible lanes so the user gets the system's "not allowed" cursor too. `onDragLeave` now uses `currentTarget.contains(relatedTarget)` so entering a child clip doesn't trigger a leave.
+- **Loop region pulse**: new `@keyframes audiocake-loop-pulse` + `.animate-loop-pulse` utility in `globals.css`. Ruler computes `playheadInLoop = isPlaying && loopEnabled && playhead in [start, end)` and applies the class when true. 1.2 s ease-in-out cycle that fades the background between 25% and 45% primary opacity — visible but not distracting.
+
+### Notes
+
+- Adding `shadcn add context-menu` brought in `@base-ui/react/context-menu`. The Trigger is a `<div>` by default (not `<button>` like Tooltip), so the `className="contents"` trick works cleanly — the trigger participates in events but contributes no layout box.
+- Sub-menu in the context menu uses Base UI's `ContextMenuSub` + `ContextMenuSubContent`. The swatch grid is a custom `<div>` inside, not `ContextMenuItem`s, because we want a 4-col grid rather than a vertical list.
+- `color-mix(in oklch, ...)` is well-supported in modern browsers; we're already Chromium-primary so safe to use.
+
+### Verify
+
+- [x] format / lint / build green.
+- [ ] Manual: MIDI track header readable, port pickers obvious.
+- [ ] Manual: right-click clip → menu appears; items work.
+- [ ] Manual: drag audio asset over MIDI track — red rejection. Over audio track — teal accept.
+- [ ] Manual: set loop region, hit play; the region pulses while playhead is inside.
+
+### Next
+
+Session 4: data safety — periodic OPFS flush for crash recovery, storage soft-cap warning, autosave indicator.

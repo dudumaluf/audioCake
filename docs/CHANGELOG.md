@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-05-23 — Session 3: interaction polish
+
+### Changed
+
+- **MIDI track header layout** rewritten: IN and OUT each get their own row with port dropdown + channel input. The row label tints teal when a port is assigned so you can see at-a-glance which side is wired. MIDI track height bumped 86 → 102 px to fit the second row comfortably.
+- **Drop targets** now distinguish compatible vs incompatible lanes during library drags. The lane the asset would land on highlights teal with a primary ring; incompatible lanes (e.g. a MIDI asset over an audio track) tint red with `cursor: not-allowed` and `dropEffect: 'none'`. `dragLeave` is now relatedTarget-aware so flickering as the pointer enters a child clip is gone.
+
+### Added
+
+- **Right-click context menu on clips** (audio + MIDI). Items: Rename (with dialog), Duplicate, Split at playhead, Reverse (audio only), Colour (sub-menu of swatches; recolours the parent track for now), Delete. Mirrors keyboard shortcuts; appears on right-click anywhere on the clip body or its handles. Uses Base UI's `ContextMenu` with `display: contents` on the trigger so we don't break the absolute-positioned clip layout.
+- **Loop region pulses** while the playhead is inside it during playback — a 1.2 s soft background brightness shift makes it visually obvious that the loop is what's driving playback right now.
+
 ## [1.6.0] — 2026-05-23 — Session 2: FX you can actually shape
 
 ### Added

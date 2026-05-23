@@ -20,7 +20,7 @@ import { useTransportStore } from '@/lib/state/transport-store'
 import type { SnapResolution, Track } from '@/lib/types'
 
 const TRACK_HEIGHT_AUDIO = 64
-const TRACK_HEIGHT_MIDI = 86
+const TRACK_HEIGHT_MIDI = 102
 const HEADER_WIDTH = 200
 
 function trackHeight(t: Track): number {
