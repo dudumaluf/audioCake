@@ -4,7 +4,8 @@ import { encodeWebCodecs } from './encoders/webcodecs'
 import { createSoundTouchNode, registerSoundTouch } from './soundtouch'
 import { encodeWav, type WavBitDepth } from './wav-encoder'
 import { readAudioBlob } from '@/lib/storage/opfs'
-import type { Clip, Track } from '@/lib/types'
+import type { Clip, FxSettings, Track } from '@/lib/types'
+import { DEFAULT_FX_SETTINGS } from '@/lib/types'
 
 export type ExportFormat = 'mp3' | 'aac' | 'wav' | 'opus'
 
@@ -16,8 +17,8 @@ export interface ExportOptions {
   normalize?: boolean
   /** Project BPM. Used to compute tempo-synced delay time. */
   bpm?: number
-  /** Delay note value in beats (1=1/4, 0.5=1/8, 1.5=1/8dotted, etc.). */
-  delayDivisionBeats?: number
+  /** Master FX settings (reverb decay/preDelay/wet, delay div/feedback/wet). */
+  fx?: FxSettings
   /** Progress callback called with 0..1. */
   onProgress?: (fraction: number, stage: 'render' | 'encode') => void
 }
@@ -83,15 +84,31 @@ export async function renderAndExport(
   const masterLimiter = new Tone.Limiter(-0.3)
   masterLimiter.toDestination()
 
-  // Global FX returns. Delay time follows the project's BPM + division so
-  // the exported mix matches what the user hears live.
-  const reverb = new Tone.Reverb({ decay: 2.4, wet: 1 })
+  // Global FX returns. Settings come from the project (reverb decay/wet,
+  // delay div/feedback/wet) so the exported mix matches what the user hears.
+  const fx = options.fx ?? DEFAULT_FX_SETTINGS
   const exportBpm = options.bpm ?? 120
-  const exportDelayBeats = options.delayDivisionBeats ?? 1.5
+
+  const reverbWet = fx.reverb.wetDb <= -60 ? 0 : Math.pow(10, fx.reverb.wetDb / 20)
+  const reverb = new Tone.Reverb({
+    decay: fx.reverb.decaySec,
+    preDelay: fx.reverb.preDelayMs / 1000,
+    wet: reverbWet,
+  })
+  // Reverb needs its IR generated before the offline render begins,
+  // otherwise the wet send will be silent. Tone awaits this on first use,
+  // but it's clearer to force it explicitly.
+  await reverb.generate()
+
+  const delayWet = fx.delay.wetDb <= -60 ? 0 : Math.pow(10, fx.delay.wetDb / 20)
+  const delaySec =
+    fx.delay.divisionBeats > 0
+      ? (60 / exportBpm) * fx.delay.divisionBeats
+      : Math.max(0.001, fx.delay.delayMs / 1000)
   const delay = new Tone.FeedbackDelay({
-    delayTime: (60 / exportBpm) * exportDelayBeats,
-    feedback: 0.35,
-    wet: 1,
+    delayTime: delaySec,
+    feedback: fx.delay.feedback,
+    wet: delayWet,
   })
   reverb.connect(masterLimiter)
   delay.connect(masterLimiter)

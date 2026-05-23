@@ -3,6 +3,7 @@
 import { SlidersVertical } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { ChannelStrip } from './ChannelStrip'
+import { FxDialog } from './FxDialog'
 import { LevelMeter } from '@/components/io/LevelMeter'
 import { getMasterMeter } from '@/lib/audio/playback'
 import { useProjectStore } from '@/lib/state/project-store'
@@ -26,7 +27,10 @@ export function Mixer() {
           <ChannelStrip key={t.id} track={t} />
         ))}
         <div className="border-border/60 bg-panel/30 ml-auto flex w-24 shrink-0 flex-col items-center gap-2 border-l p-2">
-          <div className="text-muted-foreground text-[10px] tracking-wider uppercase">Master</div>
+          <div className="flex w-full items-center justify-between gap-1">
+            <div className="text-muted-foreground text-[10px] tracking-wider uppercase">Master</div>
+            <FxDialog />
+          </div>
           <div className="flex h-full w-full justify-center px-2">
             <LevelMeter
               peaks={masterLevels.peaks}

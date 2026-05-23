@@ -1,8 +1,16 @@
 import { create } from 'zustand'
 import { temporal } from 'zundo'
 import { ulid } from 'ulid'
-import type { Clip, LoopRegion, Project, SampleRate, SnapResolution, Track } from '@/lib/types'
-import { PROJECT_SCHEMA_VERSION } from '@/lib/types'
+import type {
+  Clip,
+  FxSettings,
+  LoopRegion,
+  Project,
+  SampleRate,
+  SnapResolution,
+  Track,
+} from '@/lib/types'
+import { DEFAULT_FX_SETTINGS, PROJECT_SCHEMA_VERSION } from '@/lib/types'
 
 /**
  * Project state: tracks, clips, BPM, loop region, selection, snap settings.
@@ -25,6 +33,7 @@ interface ProjectState {
   snap: SnapResolution
   pxPerSec: number
   notes: string
+  fxSettings: FxSettings
   selectedClipIds: string[]
   /** Increments every time we mutate structural state; used to detect dirty for autosave. */
   dirtyTick: number
@@ -36,6 +45,7 @@ interface ProjectState {
   setPxPerSec: (px: number) => void
   setLoopEnabled: (enabled: boolean) => void
   setLoopRegion: (region: LoopRegion | null) => void
+  setFxSettings: (fx: FxSettings) => void
 
   addTrack: (partial?: Partial<Omit<Track, 'id'>>) => string
   addMidiTrack: (partial?: Partial<Omit<Track, 'id' | 'kind'>>) => string
@@ -100,6 +110,7 @@ export const useProjectStore = create<ProjectState>()(
       snap: '1/16',
       pxPerSec: 80,
       notes: '',
+      fxSettings: DEFAULT_FX_SETTINGS,
       selectedClipIds: [],
       dirtyTick: 0,
 
@@ -110,6 +121,7 @@ export const useProjectStore = create<ProjectState>()(
       setPxPerSec: (px) => set({ pxPerSec: Math.max(10, Math.min(800, px)) }),
       setLoopEnabled: (loopEnabled) => set({ loopEnabled }),
       setLoopRegion: (loopRegion) => set({ loopRegion }),
+      setFxSettings: (fxSettings) => set({ fxSettings }),
 
       addTrack: (partial) => {
         const id = ulid()
@@ -282,6 +294,7 @@ export const useProjectStore = create<ProjectState>()(
           snap: s.snap,
           pxPerSec: s.pxPerSec,
           notes: s.notes,
+          fxSettings: s.fxSettings,
           createdAt: now,
           updatedAt: now,
           version: PROJECT_SCHEMA_VERSION,
@@ -301,6 +314,7 @@ export const useProjectStore = create<ProjectState>()(
           snap: p.snap,
           pxPerSec: p.pxPerSec,
           notes: p.notes ?? '',
+          fxSettings: p.fxSettings ?? DEFAULT_FX_SETTINGS,
           selectedClipIds: [],
         })
         useProjectStore.temporal.getState().clear()
@@ -319,6 +333,7 @@ export const useProjectStore = create<ProjectState>()(
           snap: '1/16',
           pxPerSec: 80,
           notes: '',
+          fxSettings: DEFAULT_FX_SETTINGS,
           selectedClipIds: [],
         })
         useProjectStore.temporal.getState().clear()
@@ -353,6 +368,7 @@ const STRUCTURAL_KEYS = [
   'pxPerSec',
   'sampleRate',
   'notes',
+  'fxSettings',
 ] as const
 
 useProjectStore.subscribe((state, prev) => {

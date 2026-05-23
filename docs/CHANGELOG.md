@@ -4,6 +4,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-05-23 — Session 2: FX you can actually shape
+
+### Added
+
+- **FxDialog** in the master mixer strip (sparkles icon). Tune the master reverb (decay 0.5–8 s, pre-delay 0–200 ms, wet -20–0 dB) and delay (note division dropdown 1/2…1/16 dotted + free-ms mode, feedback 0–95%, wet -20–0 dB). Settings live on `Project.fxSettings` so reloads + `.acproj` round-trips preserve your space.
+- Engine exports `setReverbParams()` and `setDelayParams()`. `usePlaybackEngine` mirrors `fxSettings` into the engine on change. Reverb decay change triggers an async IR regeneration; the previous IR keeps working until the new one is ready, so the playback never glitches.
+- Exporter takes the project `fx` settings and applies them in the offline render (regenerates IR, applies wet trim, computes BPM-synced delay time), so what you hear is what you export.
+
+### Migration
+
+`Project.fxSettings` is optional with a `DEFAULT_FX_SETTINGS` fallback, so existing `.acproj` files load with the previous defaults (2.4 s decay, 1/8 dotted delay, 35% feedback, full wet).
+
 ## [1.5.0] — 2026-05-23 — Session 1: scrub clicks, mute ramps, tempo-sync delay, REC indicator
 
 ### Fixed

@@ -8,8 +8,10 @@ import {
   pauseTransport,
   rescheduleNow,
   setBpm,
+  setDelayParams,
   setLoop,
   setMetronomeEnabled,
+  setReverbParams,
   startTransport,
   stopTransport,
 } from '@/lib/audio/playback'
@@ -80,6 +82,15 @@ export function usePlaybackEngine() {
   useEffect(() => {
     setMetronomeEnabled(metronomeOnPlay)
   }, [metronomeOnPlay])
+
+  // Mirror project FX settings into the engine. Reverb decay change
+  // regenerates the IR asynchronously; we don't block on it because the
+  // engine's old IR keeps working until the new one is ready.
+  const fxSettings = useProjectStore((s) => s.fxSettings)
+  useEffect(() => {
+    void setReverbParams(fxSettings.reverb)
+    setDelayParams(fxSettings.delay)
+  }, [fxSettings])
 
   // rAF playhead loop, only while playing.
   useEffect(() => {

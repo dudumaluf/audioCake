@@ -470,3 +470,36 @@ Start of the "AudioCake polish + evolution" plan. Direction: polish first, perso
 ### Next
 
 Session 2: FX settings dialog (reverb decay + delay division/feedback) with project-state persistence.
+
+---
+
+## 2026-05-23 — Session 2: FX you can actually shape
+
+### Done
+
+- New `FxSettings` + `DEFAULT_FX_SETTINGS` types in `src/lib/types.ts`. `Project.fxSettings` is optional for back-compat — existing saved projects fall back to defaults on load.
+- Project store: `fxSettings` field, `setFxSettings()` action, included in `toProject` / `loadProjectData` / `newProject` / `STRUCTURAL_KEYS` so autosave + undo + .acproj round-trip all carry it.
+- Engine adds `setReverbParams({ decaySec, preDelayMs, wetDb })` and `setDelayParams({ divisionBeats, delayMs, feedback, wetDb })`. Reverb decay change regenerates the IR via Tone's offline render (async, but the previous IR keeps playing until the new one is ready — no audio glitch). Delay supports both tempo-synced (`divisionBeats > 0`) and free-ms mode (`divisionBeats === -1`). All other params ramp over 50 ms.
+- Tracked currentReverbDecaySec locally rather than reading `masterReverb.decay` (which is a Tone `Time` getter and would need string-parsing for comparison).
+- `usePlaybackEngine` subscribes to `fxSettings` and pushes via `void setReverbParams(...)` / `setDelayParams(...)` on change.
+- `FxDialog` lives in `src/components/mixer/FxDialog.tsx`. Button slotted into the Master strip header. Compact 3-row reverb section + 4-row delay section (division dropdown reveals a manual ms slider when "Free" is selected). Uses a local `draft` state that gets pushed to the store on every change so the engine updates immediately, but the slider stays responsive.
+- Exporter: `ExportOptions.fx?: FxSettings` replaces the earlier `delayDivisionBeats`. Awaits `reverb.generate()` once before the offline render begins so the wet send isn't silent during early seconds.
+
+### Notes
+
+- FxDialog uses `queueMicrotask` for the open-sync effect to satisfy the React 19 "no setState in effect body" rule, same pattern we've used elsewhere.
+- The dialog deliberately doesn't preview-without-commit — every change is live on the engine and project store. This way you can hear the change immediately, and undo works to back it out. A "preview + cancel" flow felt heavier than it needed to be for personal use.
+- Default delay is 1/8 dotted (divisionBeats = 1.5) — same musical feel as the prior hardcoded 0.375 s at 120 BPM, just now BPM-aware.
+
+### Verify
+
+- [x] format / lint / build all green.
+- [ ] Manual: open FX dialog → change reverb decay to 6 s → hear longer tail. Cmd+Z undoes it.
+- [ ] Manual: change delay to 1/4 note → hear repeats lock to the grid at current BPM.
+- [ ] Manual: save project → reload → FX settings preserved.
+- [ ] Manual: export → re-import the `.acproj` into a new project → FX settings still there.
+- [ ] Manual: export an arrangement with reverb up; the WAV has the reverb tail.
+
+### Next
+
+Session 3: interaction polish — better MIDI track headers, right-click context menu on clips, stronger drop-target feedback, loop region visible while playing.

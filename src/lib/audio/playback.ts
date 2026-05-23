@@ -165,6 +165,57 @@ export function setDelayDivisionBeats(beats: number): void {
 }
 
 /**
+ * Apply user-tunable reverb settings. Decay change triggers an IR
+ * regeneration (Tone.Reverb re-renders its convolution kernel offline);
+ * the call awaits `.generate()` so the new tail is in place before we
+ * return. PreDelay + wet ramp without regeneration.
+ */
+let currentReverbDecaySec = 2.4
+export async function setReverbParams(params: {
+  decaySec: number
+  preDelayMs: number
+  wetDb: number
+}): Promise<void> {
+  ensureInit()
+  if (!masterReverb) return
+  const wetLinear = params.wetDb <= -60 ? 0 : Math.pow(10, params.wetDb / 20)
+  masterReverb.preDelay = params.preDelayMs / 1000
+  masterReverb.wet.rampTo(wetLinear, 0.05)
+  if (Math.abs(currentReverbDecaySec - params.decaySec) > 0.01) {
+    masterReverb.decay = params.decaySec
+    currentReverbDecaySec = params.decaySec
+    try {
+      await masterReverb.generate()
+    } catch {
+      /* Tone may throw if a previous generate is still pending — safe. */
+    }
+  }
+}
+
+/**
+ * Apply user-tunable delay settings. `divisionBeats === -1` means "manual
+ * ms" — the engine reads `delayMs` instead of computing from BPM.
+ */
+export function setDelayParams(params: {
+  divisionBeats: number
+  delayMs: number
+  feedback: number
+  wetDb: number
+}): void {
+  ensureInit()
+  if (!masterDelay) return
+  const wetLinear = params.wetDb <= -60 ? 0 : Math.pow(10, params.wetDb / 20)
+  masterDelay.feedback.rampTo(Math.max(0, Math.min(0.95, params.feedback)), 0.05)
+  masterDelay.wet.rampTo(wetLinear, 0.05)
+  if (params.divisionBeats > 0) {
+    delayDivisionBeats = params.divisionBeats
+    masterDelay.delayTime.rampTo(delayTimeForBpm(activeBpm), 0.05)
+  } else {
+    masterDelay.delayTime.rampTo(Math.max(0.001, params.delayMs / 1000), 0.05)
+  }
+}
+
+/**
  * Enable or disable the metronome. When enabled, a click sounds on every
  * quarter note during playback (and during the count-in already provided
  * by the recorder hook). The click is routed direct-to-destination so it

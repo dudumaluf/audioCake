@@ -133,6 +133,39 @@ export interface LoopRegion {
  */
 export type SnapResolution = 'off' | 'bar' | '1/4' | '1/8' | '1/16'
 
+/**
+ * Master FX return settings. Stored on the project so reloads / .acproj
+ * round-trips preserve the user's space.
+ *
+ * `delayDivisionBeats`: 1 = 1/4 note, 0.5 = 1/8, 1.5 = 1/8 dotted,
+ * 0.25 = 1/16, etc. -1 means "free" (use `delayMs` directly).
+ */
+export interface FxSettings {
+  reverb: {
+    /** Decay tail length in seconds. */
+    decaySec: number
+    /** Pre-delay in milliseconds. */
+    preDelayMs: number
+    /** Wet trim in dB (-20..0). */
+    wetDb: number
+  }
+  delay: {
+    /** Musical note value in beats. -1 means "use `delayMs` directly". */
+    divisionBeats: number
+    /** Manual delay time in ms when divisionBeats === -1. */
+    delayMs: number
+    /** Feedback (0..0.95). */
+    feedback: number
+    /** Wet trim in dB (-20..0). */
+    wetDb: number
+  }
+}
+
+export const DEFAULT_FX_SETTINGS: FxSettings = {
+  reverb: { decaySec: 2.4, preDelayMs: 0, wetDb: 0 },
+  delay: { divisionBeats: 1.5, delayMs: 375, feedback: 0.35, wetDb: 0 },
+}
+
 /** Current project schema version. Bump when migrations are needed. */
 export const PROJECT_SCHEMA_VERSION = 1
 
@@ -160,6 +193,8 @@ export interface Project {
   pxPerSec: number
   /** Free-form notes / lyrics pad, saved with the project. */
   notes?: string
+  /** Master reverb + delay settings (optional for back-compat). */
+  fxSettings?: FxSettings
   createdAt: number
   updatedAt: number
   version: number
