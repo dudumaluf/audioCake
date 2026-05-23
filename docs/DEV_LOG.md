@@ -564,3 +564,40 @@ Session 4: data safety — periodic OPFS flush for crash recovery, storage soft-
 ### Next
 
 Session 5: take folders. The first new workflow capability — record N takes onto the same spot, pick the best later. Big lift; will be its own commit.
+
+---
+
+## 2026-05-23 — Session 5: take folders / comping
+
+### Done
+
+- **Types**: `Clip` gains optional `takeGroupId` + `isActiveTake`. Optional so older `.acproj` files load unchanged.
+- **Store actions**: `promoteTake`, `removeTake`, `ungroupTake`. `removeTake` promotes the most-recently-added sibling when the active take is deleted, and collapses the folder when only one take remains. `ungroupTake` extracts a single take from its folder back to standalone.
+- **Recorder auto-insert**: `useRecorder` captures the transport playhead at record-start (not at stop, so a moving playhead during recording doesn't move the take). On stop, after the asset is saved, `autoInsertTake()` runs:
+  - Finds the first audio track with `recordArm`.
+  - Detects overlaps on that track.
+  - If overlaps exist → mints (or reuses) a `takeGroupId`, marks the new clip as the active take, demotes overlapping siblings.
+  - If no overlaps → drops the take as a standalone clip.
+  - If no armed track → leaves it in the library only (preserves prior behaviour).
+- **Engine**: new `audibleClips()` helper filters non-active siblings. Called from `scheduleClips()` and `auditionAt()` so non-active takes never sound. `preloadClips()` deliberately still loads everything — switching the active take should be instant, not gated on a buffer load.
+- **Exporter**: filter mirrors the engine. Switching active take changes the exported mix.
+- **UI**: new `TakeFolderStack` component. Groups clips by `takeGroupId`; active take fills the lane minus the room reserved for sibling stripes (8 px each). Click a stripe → `promoteTake(stripe.id)`. Badge in top-right of the active take shows the layer count + icon.
+- **TrackLane integration**: clips are bucketed into `standalone[]` + `groups: Map<string, Clip[]>` and rendered separately so standalone clips don't pay any layout cost.
+
+### Notes
+
+- The plan called for a new `TakeFolder` type (separate entity holding `Clip[]`). I went with the flatter "clips carry their group id" model instead because it doesn't fragment the existing single source of truth (`projectStore.clips`), engine + exporter need only a one-line filter to participate, and undo/redo + autosave + .acproj round-trip all keep working with zero changes. A first-class `TakeFolder` entity would have meant duplicating selection / movement / split logic.
+- Stripes use `bottom` for stacking rather than `top + index * height` so they always cluster at the bottom of the lane regardless of how tall the lane is.
+- The Layers badge is `pointer-events-none` so it doesn't intercept a drag-of-the-active-take.
+
+### Verify
+
+- [x] format / lint / build green.
+- [ ] Manual: arm a track, hit record three times at the same position → see a folder of 3 takes; stripes underneath, badge shows "3".
+- [ ] Manual: click a stripe → that take becomes active; play → that take is what you hear.
+- [ ] Manual: export → the WAV reflects the active take.
+- [ ] Manual: open an old `.acproj` from before this session → loads unchanged (no folders appear, behaviour identical to before).
+
+### Next
+
+Session 6: stem export.

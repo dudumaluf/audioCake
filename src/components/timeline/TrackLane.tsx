@@ -4,11 +4,12 @@ import { useMemo, useState } from 'react'
 import { ClipBlock } from './ClipBlock'
 import { ClipContextMenu } from './ClipContextMenu'
 import { MidiClipBlock } from './MidiClipBlock'
+import { TakeFolderStack } from './TakeFolderStack'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useProjectStore } from '@/lib/state/project-store'
 import { snapTime } from '@/lib/utils/time'
 import { midiAssetDuration } from '@/lib/midi/recorder'
-import type { Track } from '@/lib/types'
+import type { Clip, Track } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
 interface TrackLaneProps {
@@ -142,7 +143,7 @@ export function TrackLane({ track, height, pxPerSec, bpm }: TrackLaneProps) {
       )}
       style={{ height }}
     >
-      {clips.map((c) => {
+      {(() => {
         const onSelect = (id: string, additive: boolean) => {
           if (additive) {
             selectClips(
@@ -154,30 +155,59 @@ export function TrackLane({ track, height, pxPerSec, bpm }: TrackLaneProps) {
             selectClips([id])
           }
         }
-        const block =
-          c.kind === 'audio' ? (
-            <ClipBlock
-              clip={c}
-              pxPerSec={pxPerSec}
-              trackColor={track.color}
-              selected={selectedClipIds.includes(c.id)}
-              onSelect={onSelect}
-            />
-          ) : (
-            <MidiClipBlock
-              clip={c}
-              pxPerSec={pxPerSec}
-              trackColor={track.color}
-              selected={selectedClipIds.includes(c.id)}
-              onSelect={onSelect}
-            />
-          )
+        // Bucket clips by take folder. Clips without a group render
+        // standalone; clips with one collapse into a single stack render.
+        const groups = new Map<string, Clip[]>()
+        const standalone: Clip[] = []
+        for (const c of clips) {
+          if (c.takeGroupId) {
+            const arr = groups.get(c.takeGroupId) ?? []
+            arr.push(c)
+            groups.set(c.takeGroupId, arr)
+          } else {
+            standalone.push(c)
+          }
+        }
         return (
-          <ClipContextMenu key={c.id} clip={c}>
-            {block}
-          </ClipContextMenu>
+          <>
+            {standalone.map((c) => {
+              const block =
+                c.kind === 'audio' ? (
+                  <ClipBlock
+                    clip={c}
+                    pxPerSec={pxPerSec}
+                    trackColor={track.color}
+                    selected={selectedClipIds.includes(c.id)}
+                    onSelect={onSelect}
+                  />
+                ) : (
+                  <MidiClipBlock
+                    clip={c}
+                    pxPerSec={pxPerSec}
+                    trackColor={track.color}
+                    selected={selectedClipIds.includes(c.id)}
+                    onSelect={onSelect}
+                  />
+                )
+              return (
+                <ClipContextMenu key={c.id} clip={c}>
+                  {block}
+                </ClipContextMenu>
+              )
+            })}
+            {Array.from(groups.entries()).map(([gid, takes]) => (
+              <TakeFolderStack
+                key={gid}
+                takes={takes}
+                trackColor={track.color}
+                pxPerSec={pxPerSec}
+                selectedClipIds={selectedClipIds}
+                onSelect={onSelect}
+              />
+            ))}
+          </>
         )
-      })}
+      })()}
     </div>
   )
 }

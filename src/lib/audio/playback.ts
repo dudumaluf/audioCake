@@ -572,6 +572,22 @@ function buildReversedBuffer(src: AudioBuffer): AudioBuffer {
 }
 
 /**
+ * Filter take-folder siblings down to the active take. A clip with no
+ * `takeGroupId` is always kept; clips with a group are kept only when
+ * `isActiveTake !== false` (treat absent flag as active for back-compat).
+ *
+ * Used by every code path that decides what actually plays — preload,
+ * schedule, audition — so non-active takes are loaded/scheduled by
+ * applyClips (so their UI bookkeeping exists) but never sound.
+ */
+function audibleClips(clips: Clip[]): Clip[] {
+  return clips.filter((c) => {
+    if (!c.takeGroupId) return true
+    return c.isActiveTake !== false
+  })
+}
+
+/**
  * Preload all audio clip buffers + MIDI assets. Called once at start-of-
  * playback so the scheduler has everything ready and there's no audible gap.
  */
@@ -625,6 +641,9 @@ export function scheduleClips(clips: Clip[], tracks: Track[]): void {
   const tracksById = new Map(tracks.map((t) => [t.id, t]))
   const transportSec = transport.seconds
   const lookahead = Tone.getContext().lookAhead
+
+  // Take folders: only the active take should sound.
+  clips = audibleClips(clips)
 
   const looping = transport.loop
   const loopStart = looping ? Number(transport.loopStart) : 0
@@ -785,8 +804,10 @@ export async function auditionAt(clips: Clip[], timeSec: number): Promise<void> 
   await ensureSoundTouchRegistered()
   if (Tone.getTransport().state === 'started') return
 
-  // Make sure relevant clip buffers are loaded.
-  const relevant = clips.filter((c) => {
+  // Make sure relevant clip buffers are loaded. Inactive take-folder
+  // siblings shouldn't audition either; the user only hears what's
+  // currently the "live" take when scrubbing.
+  const relevant = audibleClips(clips).filter((c) => {
     if (c.kind !== 'audio') return false
     const ts = c.timeStretch ?? 1
     const stretchedDur = c.duration / ts

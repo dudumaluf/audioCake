@@ -95,6 +95,15 @@ export interface Clip {
   pitchSemitones?: number
   /** Optional. Defaults to false. */
   reverse?: boolean
+  /**
+   * Take-folder grouping. Clips sharing a takeGroupId belong to the same
+   * folder — only the one with `isActiveTake = true` is scheduled by the
+   * engine. UI stacks them in the same lane slot. Created when a new
+   * recording overlaps an existing clip on the same track.
+   */
+  takeGroupId?: string
+  /** True for the take currently audible; false for siblings in the folder. */
+  isActiveTake?: boolean
 }
 
 /** A single MIDI note inside a MidiAsset. */

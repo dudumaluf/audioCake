@@ -47,7 +47,11 @@ export async function renderAndExport(
 
   // Audio clips only for offline render (MIDI clips don't produce audio
   // unless bounced to audio first — see bounceMidiClip).
-  const audioClips = clips.filter((c) => c.kind === 'audio')
+  // Take folders: skip non-active siblings (treat undefined as active for
+  // back-compat with projects pre-take-folders).
+  const audioClips = clips.filter(
+    (c) => c.kind === 'audio' && (!c.takeGroupId || c.isActiveTake !== false),
+  )
 
   // Compute the project length: end of the last clip, with a tiny tail to
   // avoid clipping a fade-out. Account for clip timeStretch (>1 makes

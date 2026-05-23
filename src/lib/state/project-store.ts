@@ -62,6 +62,16 @@ interface ProjectState {
   deleteSelected: () => void
   nudgeSelected: (deltaSec: number) => void
 
+  /** Take-folder helpers. */
+  /** Make `clipId` the active take in its folder; demote siblings. */
+  promoteTake: (clipId: string) => void
+  /** Remove a take from its folder; if it was the active one, promote the
+   *  next sibling. If the folder is left with one clip, ungroup it. */
+  removeTake: (clipId: string) => void
+  /** Pull `clipId` out of its take folder so it becomes a standalone clip
+   *  at its current time. Does not delete other takes. */
+  ungroupTake: (clipId: string) => void
+
   selectClips: (ids: string[]) => void
   toggleClipSelected: (id: string) => void
   clearSelection: () => void
@@ -265,6 +275,65 @@ export const useProjectStore = create<ProjectState>()(
             drop.has(c.id) ? { ...c, startTime: Math.max(0, c.startTime + deltaSec) } : c,
           ),
         }))
+      },
+
+      promoteTake: (clipId) => {
+        const { clips } = get()
+        const promoted = clips.find((c) => c.id === clipId)
+        if (!promoted || !promoted.takeGroupId) return
+        const groupId = promoted.takeGroupId
+        set({
+          clips: clips.map((c) =>
+            c.takeGroupId === groupId ? { ...c, isActiveTake: c.id === clipId } : c,
+          ),
+        })
+      },
+
+      removeTake: (clipId) => {
+        const { clips } = get()
+        const target = clips.find((c) => c.id === clipId)
+        if (!target) return
+        const groupId = target.takeGroupId
+        let next = clips.filter((c) => c.id !== clipId)
+        if (groupId) {
+          const siblings = next.filter((c) => c.takeGroupId === groupId)
+          if (siblings.length === 1) {
+            // Folder collapsed to a single take — ungroup.
+            next = next.map((c) =>
+              c.takeGroupId === groupId
+                ? { ...c, takeGroupId: undefined, isActiveTake: undefined }
+                : c,
+            )
+          } else if (target.isActiveTake && siblings.length > 0) {
+            // Active take was removed — promote the most recently added sibling.
+            const newActiveId = siblings[siblings.length - 1]!.id
+            next = next.map((c) =>
+              c.takeGroupId === groupId ? { ...c, isActiveTake: c.id === newActiveId } : c,
+            )
+          }
+        }
+        set({ clips: next, selectedClipIds: get().selectedClipIds.filter((id) => id !== clipId) })
+      },
+
+      ungroupTake: (clipId) => {
+        const { clips } = get()
+        const target = clips.find((c) => c.id === clipId)
+        if (!target?.takeGroupId) return
+        const groupId = target.takeGroupId
+        set({
+          clips: clips.map((c) => {
+            if (c.id === clipId) {
+              return { ...c, takeGroupId: undefined, isActiveTake: undefined }
+            }
+            if (c.takeGroupId === groupId && target.isActiveTake) {
+              // Promote a remaining sibling if the ungrouped one was active.
+              const siblings = clips.filter((k) => k.takeGroupId === groupId && k.id !== clipId)
+              const promoteId = siblings[siblings.length - 1]?.id
+              return { ...c, isActiveTake: promoteId ? c.id === promoteId : c.isActiveTake }
+            }
+            return c
+          }),
+        })
       },
 
       selectClips: (ids) => set({ selectedClipIds: ids }),

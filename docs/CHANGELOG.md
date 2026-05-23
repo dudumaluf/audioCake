@@ -4,6 +4,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semver-ish (pr
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-05-23 — Session 5: take folders / comping
+
+### Added
+
+- **Take folder data model**: `Clip.takeGroupId` + `Clip.isActiveTake` (optional fields, fully back-compat with older `.acproj` files). Clips sharing a `takeGroupId` form a folder; only the one with `isActiveTake !== false` sounds.
+- **Auto-take-folder on record**: recording onto a track that has `recordArm` now also auto-inserts the captured clip at the position where transport was when recording started. If that clip overlaps existing clips on the armed track, the new and overlapping clips are folded into a take folder — the new take becomes active. Existing folders absorb the new take instead of forming a new one.
+- **Take folder timeline UI**: new `TakeFolderStack` component. Active take displays at full lane height with a "layers" badge showing the take count; sibling takes appear as thin stripes below, each clickable to promote it to active. Stripe length reflects each take's individual duration so longer/shorter alternatives are visible at a glance.
+- **Engine + exporter respect take folders**: `audibleClips()` helper filters non-active siblings before scheduling, auditioning, and offline rendering, so swapping the active take changes both live playback and what gets exported.
+- New store actions: `promoteTake(clipId)`, `removeTake(clipId)`, `ungroupTake(clipId)`. Both `removeTake` and `ungroupTake` correctly handle promotion of a sibling when the active take is removed, and ungroup the folder when only one take remains.
+
 ## [1.8.0] — 2026-05-23 — Session 4: data safety
 
 ### Added

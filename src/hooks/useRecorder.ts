@@ -12,8 +12,10 @@ import {
 import { encodeWav } from '@/lib/audio/wav-encoder'
 import { useAssetStore } from '@/lib/state/asset-store'
 import { useIOStore } from '@/lib/state/io-store'
+import { useProjectStore } from '@/lib/state/project-store'
+import { useTransportStore } from '@/lib/state/transport-store'
 import { getStorageEstimate, requestPersistentStorage } from '@/lib/storage/opfs'
-import type { AudioAsset } from '@/lib/types'
+import type { AudioAsset, Clip } from '@/lib/types'
 import { buildPeaks } from '@/lib/utils/audio-math'
 
 export type RecorderState = 'idle' | 'monitoring' | 'count-in' | 'recording' | 'saving'
@@ -114,6 +116,10 @@ export function useRecorder() {
 
     const begin = async () => {
       setState('recording')
+      // Capture playhead at record-start so the auto-inserted clip lands
+      // where the user was. Captured here (not in the stop handler) so a
+      // moving playhead during recording doesn't move the take.
+      const recordStartSec = useTransportStore.getState().playheadSec
       // Use a fresh recovery session id per take. The recorder will flush
       // every 5s; on clean stop it deletes the file, on a crash the file
       // remains and the boot flow offers to recover it.
@@ -141,6 +147,15 @@ export function useRecorder() {
         await requestPersistentStorage()
         try {
           await addRecording({ asset, wavBlob: blob })
+          // Auto-insert: if there's an audio track armed, drop the new
+          // take onto it at the position where recording started. If the
+          // new clip overlaps an existing clip on that track, wrap both
+          // into a take folder — the new one becomes the active take.
+          autoInsertTake({
+            asset,
+            startTime: recordStartSec,
+            durationSec,
+          })
           toast.success('Recording saved', {
             description: `${asset.name} — ${durationSec.toFixed(1)}s`,
           })
@@ -193,4 +208,70 @@ function defaultName(deviceLabel: string | null | undefined): string {
   const mm = String(stamp.getMinutes()).padStart(2, '0')
   const prefix = deviceLabel ? deviceLabel.split(' ')[0] : 'Take'
   return `${prefix} ${hh}:${mm}`
+}
+
+/**
+ * Place a freshly-recorded asset onto the timeline.
+ *
+ * - If there's at least one audio track with `recordArm`, the first one
+ *   wins. (No record-armed track → just leave it in the library; the user
+ *   can drag it later.)
+ * - If the new clip overlaps any existing clip on the chosen track, all
+ *   overlapping clips + the new one are folded into a take folder. The
+ *   new one becomes the active take; siblings keep their data but get
+ *   demoted. If the existing clip is already part of a folder, the new
+ *   clip joins that folder rather than creating a new one.
+ */
+function autoInsertTake(input: {
+  asset: AudioAsset
+  startTime: number
+  durationSec: number
+}): void {
+  const projectStore = useProjectStore.getState()
+  const armedTrack = projectStore.tracks.find((t) => t.kind === 'audio' && t.recordArm)
+  if (!armedTrack) return
+
+  const overlapping = projectStore.clips.filter((c) => {
+    if (c.trackId !== armedTrack.id || c.kind !== 'audio') return false
+    const cEnd = c.startTime + c.duration
+    const newEnd = input.startTime + input.durationSec
+    return c.startTime < newEnd && cEnd > input.startTime
+  })
+
+  // Decide on group: reuse the first overlapping clip's group, or mint
+  // a new id when there are overlaps but no group yet.
+  let groupId: string | undefined
+  if (overlapping.length > 0) {
+    groupId = overlapping.find((c) => c.takeGroupId)?.takeGroupId ?? ulid()
+  }
+
+  const newClipPatch: Omit<Clip, 'id'> = {
+    trackId: armedTrack.id,
+    kind: 'audio',
+    assetId: input.asset.id,
+    startTime: input.startTime,
+    offset: 0,
+    duration: input.durationSec,
+    fadeIn: 0,
+    fadeOut: 0,
+    gainDb: 0,
+    name: input.asset.name,
+    ...(groupId ? { takeGroupId: groupId, isActiveTake: true } : {}),
+  }
+  const newClipId = projectStore.addClip(newClipPatch)
+
+  // If we're forming a take folder, fold every overlapping clip into the
+  // same group and demote them. We do this after addClip so the new clip
+  // is in store and visible to updateClip.
+  if (groupId) {
+    for (const c of overlapping) {
+      projectStore.updateClip(c.id, {
+        takeGroupId: groupId,
+        isActiveTake: false,
+      })
+    }
+    // Ensure the new one is the active take (already set above, but
+    // explicit for clarity if addClip strips falsy/undefined keys).
+    projectStore.updateClip(newClipId, { isActiveTake: true })
+  }
 }
